@@ -1,0 +1,80 @@
+<sect3 id="api.PL.sv.yesno">
+	<title><varname>PL_sv_yes</varname> and
+	  <varname>PL_sv_no</varname></title>
+
+	<para>
+	  <!-- What does it do? --> 
+
+	  These SVs represent true and false values; you can use them
+	  as boolean return values from your functions. Just like
+	  <varname>PL_sv_undef</varname> above, these are the actual
+	  SV structures themselves, rather than pointers to them, so
+	  use <varname>&amp;PL_sv_yes</varname> and
+	  <varname>&amp;PL_sv_no</varname> in your code.
+
+	  <example>
+	    <title> Is it a number? </title>
+	    <para>
+
+	      <!-- Introduction to example --> There's a function in
+	      <filename>sv.c</filename> in the Perl core called
+	      <function>looks_like_number</function> which takes an
+	      <type>SV</type> and decides whether or not it's a valid
+	      numeric value. In the <classname>DBI</classname> module,
+	      there's a wrapper around the function allowing it to
+	      take a list of items and return a list of true or false
+	      values. Here's the meat of that function:
+	    </para>
+        <programlistingco>
+          <areaspec>
+        <area coords="2" id="api.PL.sv.yes.1">
+        <area coords="3" id="api.PL.sv.yes.2">
+        <area coords="5" id="api.PL.sv.yes.3">
+          </areaspec>
+          <programlisting>
+    for(i=0; i < items ; ++i) {
+        SV *sv = ST(i);
+        if (!SvOK(sv) || (SvPOK(sv) && SvCUR(sv)==0))
+            PUSHs(&amp;PL_sv_undef);
+        else if ( looks_like_number(sv) )
+            PUSHs(&amp;PL_sv_yes);
+        else
+            PUSHs(&amp;PL_sv_no);
+    }
+
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="api.PL.sv.yes.1">
+		  <para>
+		    We loop over the arguments to the function -
+		    <function>ST</function> is a special macro which
+		    gets the numbered SV from the list of arguments
+		    that Perl keeps on the argument stack. Having
+		    taken all the arguments off the stack, we'll fill
+		    it back up with the return values.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.yes.2">
+		  <para>
+		    If the SV isn't available, or is a string and has
+		    no length, we put <literal>undef</literal> onto
+		    the stack.
+		  </para>
+		</callout
+		<callout arearefs="api.PL.sv.yes.3">
+		  <para>
+		    Now we call the function in
+		    <filename>sv.c</filename>, and if that returns
+		    true, we put the true value,
+		    <varname>&amp;PL_sv_yes</varname> onto the
+		    stack. If it's false, we put
+		    <varname>&amp;PL_sv_no</varname> on instead.
+		  </para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+	</para>
+	<para>See also: <xref linkend="api.svtrue"></para>
+      </sect3>

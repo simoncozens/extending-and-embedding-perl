@@ -1,0 +1,4779 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter id="advxs">
+  <title>Advanced XS Programming</title>
+
+<para>
+Gluing simple C functions to Perl is fairly straightforward and
+requires no special knowledge of the Perl internals. <xref linkend="xsintro">
+covers the basics of XS and how to pass in and return values
+associated with simple C scalar types. Unfortunately, many functions
+and libraries have much more complicated signatures and require more work to
+implement a Perl interface.
+</para>
+
+<para>
+This chapter covers a more advanced use of XS, dealing with
+topics such as structures, arrays, and callbacks. This chapter builds
+on <xref linkend="xsintro"> and will also refer to functions used in
+the Perl internals and described in <xref linkend="api">.
+</para>
+
+<sect1 id="advxs.pointers">
+<title>Pointers and things</title>
+
+    <para>Now that we know about pointers and dynamic memory
+    allocation we can start doing more interesting things with XS. To
+    demonstrate some of these issues we can use the following function
+    which concatenates two strings to a third and returns the total
+    length of the final string <footnote><para>Although why you would
+    want to use this function rather than the standard
+    <function>strcat</function> function or
+    <function>sv_catpv</function> from the Perl API is a
+    mystery!</para></footnote>.</para>
+
+<programlisting>
+#include &lt;string.h&gt;
+
+STRLEN strconcat (char* str1, char* str2, char* outstr) {
+   strcpy( outstr, (const char*)str1 );
+   strcat( outstr, (const char*)str2 );
+   return strlen( outstr );
+}
+</programlisting>
+
+    <para>We will now write an XS interface to mirror the C calling
+    interface. The C signature of:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>STRLEN <function>strconcat</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>char  *<parameter>str1</parameter></paramdef>
+	  <paramdef>char  *<parameter>str2</parameter></paramdef>
+	  <paramdef>char  *<parameter>outstr</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+    <para>will then translate to a Perl signature of:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>$len = <function>strconcat</function></funcdef>
+	  <paramdef>$str1</paramdef>
+	  <paramdef>$str2</paramdef>
+	  <paramdef>$outstr</paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+<para>In this case we could write the XS interface as follows:</para>
+
+<programlisting>
+STRLEN
+strconcat( str1, str2, outstr )
+  char* str1
+  char* str2
+  char* outstr = NO_INIT
+ OUTPUT:
+  outstr
+  RETVAL
+</programlisting>
+
+    <para>Here the <varname>NO_INIT</varname> keyword is used to tell
+    the compiler not to care about the input value of
+    <varname>outstr</varname>.  Remember that we have to tell
+    <command>xsubpp</command> that we want to use the return value
+    even though we have specified a return type.</para>
+
+    <para>Unfortunately, the above code will not work because our
+    simple <function>strconcat</function> function assumes that the
+    output string has enough space to hold the concatenated string. In
+    the above XS segment <varname>outstr</varname> is typed as a
+    pointer to a string but is not actually pointing to anything! We
+    have to fix this by using a <varname>CODE</varname> block that
+    allocates the memory for a string of the required
+    size<footnote><para>The alternative is to pre-allocate the memory
+    inside Perl by passing a string in as the third argument (and
+    removing the NO_INIT declaration). The contents of the string will
+    then be overwritten by <function>strconcat</function>. This will
+    work but can generate core dumps if the string is not large enough
+    to receive the result string. Not
+    recommended!</para></footnote></para>
+
+<programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="6" id="xsi.preinit">
+	  <area coords="9" id="xsi.size">
+	  <area coords="10" id="xsi.new">
+	</areaspec>
+<programlisting>
+STRLEN
+strconcat( str1, str2, outstr )
+  char* str1
+  char* str2
+  char* outstr = NO_INIT
+ PREINIT:
+  STRLEN length;
+ CODE:
+  length = strlen( str1 ) + strlen( str2 ) + 1;
+  New(0, outstr, length, char );
+  RETVAL = strconcat( str1, str2, outstr );
+ OUTPUT:
+  outstr
+  RETVAL
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="xsi.preinit">
+	    <para>PREINIT is used to declare additional variables</para>
+	  </callout>
+	  <callout arearefs="xsi.size">
+	    <para>Calculate the size of the required string. Don't forget the extra space for the the null character!</para>
+	  </callout>
+	  <callout arearefs="xsi.new">
+	    <para>We use <function>New</function> to allocate the
+	    memory rather than <function>malloc</function> since we
+	    have access to the Perl macros. See <xref linkend="cadv">
+	    for more details on this function.</para>
+	  </callout>
+	</calloutlist>
+</programlistingco>
+
+    <para>Now this routine is becoming complicated! The
+    <varname>PREINIT</varname> block is there to initialise additional
+    variables that are required for the <varname>CODE</varname>
+    section. <varname>PREINIT</varname> guarantees that the variable
+    declaration will occur as soon as possible after entering the
+    function as some compilers do not like declarations after code
+    sections have started. It provides a nice way to separate variable
+    declarations from code. Even worse, whilst our XS interface will
+    now work there is still a problem since each time the routine is
+    entered memory is allocated to <varname>outstr</varname> but it is
+    never freed. XS provides a means to tidy up after ourselves by
+    using the <varname>CLEANUP</varname> keyword. The cleanup code is
+    guaranteed to run just before the C code returns control to
+    Perl. Our XS function should now work without memory
+    leaks:</para>
+
+<programlisting>
+STRLEN
+strconcat( str1, str2, outstr )
+  char* str1
+  char* str2
+  char* outstr = NO_INIT
+ PREINIT:
+  STRLEN length;
+ CODE:
+  length = strlen( str1 ) + strlen( str2 ) + 1;
+  New(0, outstr, length, char );
+  RETVAL = strconcat( str1, str2, outstr );
+ OUTPUT:
+  outstr
+  RETVAL
+ CLEANUP:
+  Safefree( outstr );
+</programlisting>
+
+    <para>This example shows us how to deal with pointer types (in
+    this case a simple string) and how to allocate and free memory
+    using XS. It also demonstrates the wrong way to approach interface
+    design - in a real application the string would be a return value
+    (without the length) and would not be returned via the argument
+    list. Something like this:</para>
+
+    <programlisting>
+char *
+strconcat( str1, str2 )
+  char* str1
+  char* str2
+ PREINIT:
+  STRLEN length;
+ CODE:
+  length = strlen( str1 ) + strlen( str2 ) + 1;
+  New(0, RETVAL, length, char );
+  length = strconcat( str1, str2, RETVAL );
+ OUTPUT:
+  RETVAL
+ CLEANUP:
+  Safefree( outstr );
+</programlisting>
+
+</sect1>
+
+<sect1 id="advxs.io">
+<title>Filehandles</title>
+
+    <para>Sometimes an external library needs to print to a
+    user-supplied filehandle or, occasionally, opens a file and
+    returns a filehandle to the user. If the library uses C
+    input/output streams then it is easy to pass the C stream to and
+    from perl with XS since by default XS knows how to deal with a
+    <type>FILE*</type>, converting it to and from a perl filehandle.
+    The following example could be used to provide an XS interface to
+    one of the Gnu readline functions<footnote><para>The
+    <classname>Term::ReadLine::Gnu</classname> module has a full
+    implementation</para></footnote>:</para>
+
+      <programlisting>
+int
+rl_getc( file )
+  FILE * file
+</programlisting>
+
+    <para>This example shows that a <type>FILE*</type> can be treated
+    like any other simple type, in this case the filehandle is an
+    input argument:</para>
+
+      <programlisting>
+$retval = rl_getc(FH);
+</programlisting>
+
+    <para>but it is just as easy to import a stream into
+    perl.</para><remark>Care must be taken if the external library
+    closes an imported file handle without perl knowning - on linux
+    this causes a core dump (cf. XS::Typemap)</remark>
+
+
+    <para> If your external library requires a file descriptor (see
+    <xref linkend="cadv.fileio">) then you will have to use the
+    <function>fileno</function> to extract the file descriptor from
+    the file handle or stream (either by using the perl or the C
+    <function>fileno</function> functions).  Similarly, if you are
+    importing a file descriptor into Perl you need to convert it to a
+    filehandle either by using the <function>fdopen</function> C
+    function (if you are comfortable with XS and C) or by importing
+    the descriptor into perl as an integer and then using Perl's
+    <function>open</function> command<footnote><para>or even
+    <userinput>IO::Handle->new_from_fd()</userinput></para></footnote>
+    to translate it. </para>
+
+      <programlisting>
+$fd = some_xs_function();
+open(FH, "<&=$fd");
+</programlisting>
+
+    <para>From version 5.7.1 of Perl the I/O subsystem is completely
+    self-contained and no longer relies on the underlying operating
+    system for implementation. Perl itself uses a <type>PerlIO*</type>
+    rather than a <type>FILE*</type> for all I/O operations (although
+    in some cases a <type>PerlIO*</type> can be the same as a
+    <type>FILE*</type> you can't rely on it). If you are using I/O in
+    your XS code but you are not using an external library then you
+    should be using <type>PerlIO*</type> in preference to a
+    <type>FILE*</type>. Of course, a <type>PerlIO*</type> is
+    recognised automatically by XS.</para>
+
+</sect1>
+
+
+<sect1 id="advxs.typemaps">
+<title>Typemaps</title>
+    
+    <para>When a variable is passed from Perl to C (or from C to Perl)
+    it must be translated from a Perl scalar variable (<xref
+    linkend="perlvar">) to the correct type expected by the C
+    function. So far this translation has been implicitly assumed to
+    be something that <quote>just happens</quote> but before we can
+    move further into XS we have to explain <emphasis>how</emphasis>
+    it happens.</para>
+
+    <para>The XS compiler (<command>xsubpp</command>) uses a lookup
+    table, called a <firstterm>typemap</firstterm>, to work out what
+    to do with each variable type it encounters. Perl comes with a
+    <filename>typemap</filename> file that contains the common
+    variable types and it is installed as part of Perl. On many Unix
+    systems it can be found in
+    <filename>/usr/lib/perl5/5.6.0/ExtUtils/typemap</filename><footnote><para>The
+    location of the file on your system can be determined using Perl's
+    <classname>Config</classname> module:</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -MConfig -MFile::Spec -e 'print File::Spec->catfile($Config{installprivlib},"ExtUtils","typemap")'</userinput>
+/usr/lib/perl5/5.6.0/ExtUtils/typemap
+</screen>
+</footnote>. Here is a subset of that file:
+</para>
+
+    <remark>Suggestion is that the typemap listing focuses on types
+    that we actually use and on types that include the special xsubpp
+    variables described in this section.</remark>
+
+<programlisting>
+# basic C types
+int			T_IV
+unsigned int		T_UV
+long			T_IV
+unsigned long		T_UV
+char			T_CHAR
+unsigned char		T_U_CHAR
+char *			T_PV
+unsigned char *		T_PV
+size_t			T_IV
+STRLEN                  T_IV
+time_t			T_NV
+double                  T_DOUBLE
+
+############################################
+INPUT
+T_UV
+	$var = ($type)SvUV($arg)
+T_IV
+	$var = ($type)SvIV($arg)
+T_CHAR
+	$var = (char)*SvPV($arg,PL_na)
+T_U_CHAR
+	$var = (unsigned char)SvUV($arg)
+T_NV
+	$var = ($type)SvNV($arg)
+T_DOUBLE
+	$var = (double)SvNV($arg)
+T_PV
+	$var = ($type)SvPV($arg,PL_na)
+############################################
+OUTPUT
+T_IV
+	sv_setiv($arg, (IV)$var);
+T_UV
+	sv_setuv($arg, (UV)$var);
+T_CHAR
+	sv_setpvn($arg, (char *)&$var, 1);
+T_U_CHAR
+	sv_setuv($arg, (UV)$var);
+T_NV
+	sv_setnv($arg, (double)$var);
+T_DOUBLE
+	sv_setnv($arg, (double)$var);
+T_PV
+	sv_setpv((SV*)$arg, $var);
+</programlisting>
+
+    <para>The first section contains a list of all the C types of
+    interest (there are many more in the actual file) along with a
+    string describing the type of variable. As can be seen from the
+    list this provides a many-to-one translation since many different
+    C variable types can have the same fundamental representation via
+    the use of typedefs (see <xref linkend="cintro.typedef">). For
+    example, both <type>size_t</type> and <type>STRLEN</type> are
+    fundamentally integer types and can be represented by a
+    <type>T_IV</type> in the typemap.</para>
+
+    <para>The second section is called <quote>INPUT</quote> and provides
+    the code required to translate a Perl variable to the
+    corresponding C type. The third section is called
+    <quote>OUTPUT</quote> and does the reverse: providing code to
+    translate C variables to Perl variables. The identifier matches
+    the value defined in the first section and the functions are
+    simply those described in <xref linkend="api.getsv">.  For
+    example, the typemap entry to translate an SV to an integer (T_IV)
+    uses <function>SvIV</function> to retrieve the integer from the
+    <type>SV</type> and <function>sv_setiv</function> to set the
+    integer part of an <type>SV</type>.</para>
+
+    <para>The <filename>typemap</filename> file may look strange
+    because it includes Perl-style variables in C-type code. The
+    variables <varname>$arg</varname>, <varname>$var</varname> and
+    <varname>$type</varname> (and for more complex entries
+    <varname>$ntype</varname>) have a special meaning in
+    typemaps.</para>
+
+    <variablelist>
+      <varlistentry>
+	<term>$arg</term>
+	<listitem>
+	  <para>This is the name of the Perl SV in the Perl argument
+	  list.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>$var</term>
+	<listitem>
+	  <para>This is the name of the C variable that is either
+	  receiving the value from the SV or setting the value in the
+	  SV.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>$type</term>
+	<listitem>
+	  <para>This is the type of the C variable. This will be one
+	  of the types listed at the top of the typemap file.</para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+	<term>$ntype</term>
+	<listitem>
+	  <para>The type of the C variable with all asterisks replaced
+	  with the string <quote>Ptr</quote>. A <type>char *</type> would
+	  therefore set <varname>$ntype</varname> to
+	  <quote>charPtr</quote>. This variable is sometimes used for
+	  setting classnames or for referencing helper functions.
+ </para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>$Package</term>
+	<listitem>
+	  <para>The Perl package associated with this variable. This
+	  is the same as the value assigned to the
+	  <function>PACKAGE</function> directive in the XS
+	  file.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>$func_name</term>
+	<listitem>
+	  <para>This is the name of the XS function.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>$argoff</term>
+	<listitem>
+	  <para>The position of the argument in the argument
+	  list. Starts counting at 0.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+    <para>You will find that in many cases you will need to add extra
+    typemap entries when creating XS interfaces. Rather than add to
+    the standard typemap all that is required is to create a file
+    called <filename>typemap</filename> in your module directory and
+    add entries in the same format as that used in the default typemap
+    above. The <filename>makefile</filename> that is generated from
+    <filename>Makefile.PL</filename> will automatically include this
+    typemap file in the XS processing.</para>
+
+</sect1>
+
+<sect1 id="advxs.argstack">
+<title>The Argument Stack</title>
+
+    <para>In Perl arguments are passed into and out of subroutines as
+    lists. The list is called an <firstterm>argument
+    stack</firstterm>: arguments are pushed onto the stack by the
+    caller and shifted off the stack by the subroutine. Any Perl
+    program will demonstrate this behaviour:</para>
+
+<programlisting>
+my ($sum, $diff) = sumdiff( 5, 3 );
+
+sub sumdiff {
+  my $arg1 = shift; # implicitly shifts of @_
+  my $arg2 = shift;
+
+  return ( $arg1 + $arg2, $arg1 - $arg2 );
+}
+</programlisting>
+
+    <para>Perl keeps track of the number of arguments on the stack
+    that are meant for the current subroutine (i.e. the size of
+    <varname>@_</varname>) <remark>Do we want to explain how or is
+    that too detailed for this section?</remark></para>
+
+    <para>XS routines use the exact same technique when passing
+    arguments from Perl to the XS layer. In our discussion so far this
+    has happened automatically and the arguments from the stack have
+    been processed using the provided typemap. Perl provides the
+    <function>ST</function> macro to retrieve the <type>SV</type> on
+    the stack. <function>ST(0)</function> is equivalent to
+    <varname>$_[0]</varname>, <function>ST(1)</function> is equivalent
+    to <varname>$_[1]</varname> etc. Indeed in the typemap definitions
+    described in the previous section <varname>$arg</varname> is
+    actually replaced by <function>ST()</function> macros
+    corresponding to the required stack position. More details on this
+    replacement can be found in <xref linkend="advxs.inside"></para>
+    
+    <para>So far we have just looked at XS functions that either
+    modify input arguments (ultimately using the
+    <function>ST</function> macros) and/or return a single value. It
+    is also possible to write XS functions that take full control of
+    the argument stack and this chapter contains examples on how to
+    achieve this using PPCODE (see <xref
+    linkend="advxs.cstruct.retlist">).</para>
+
+</sect1>
+
+
+<sect1 id="advxs.cstruct">
+<title>C Structures</title>
+
+<para>
+C structures (<xref linkend="cadv.struct">) are used in many libraries
+to pass related blocks of data around. This section shows how you can
+handle them in XS. The choice you make depends entirely on the way in
+which the structure is to be used.
+</para>
+
+<sect2 id="advxs.cstruct.black">
+<title>...as black boxes</title>
+
+<para>
+If you don't want to look inside the structure (or are not allowed to)
+then one approach to structures is simply to return the pointer to the
+structure and store it in Perl scalar. Usually, the pointer is then
+used as an argument for other library routines. As a simple example of
+this we will provide an XS interface to some of the 
+POSIX functions that deal with time. They are:
+</para>
+
+      <variablelist>
+	<varlistentry>
+	  <term><funcsynopsis>
+	      <funcprototype>
+		<funcdef>struct tm *
+		<function>gmtime</function></funcdef> <paramdef>const
+		time_t *<parameter>clock</parameter></paramdef>
+	      </funcprototype>
+	    </funcsynopsis>
+          </term>
+	  <listitem>
+	    <para>Returns a <varname>tm</varname> structure (using
+	    Universal Time) for a given Unix time (e.g. the output
+	    from the Perl <function>time</function> function). This is
+	    the routine used for the Perl <function>gmtime</function>
+	    builtin.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><funcsynopsis>
+	      <funcprototype>
+		<funcdef>time_t <function>timegm</function></funcdef>
+                <paramdef>struct tm * <parameter>tm</parameter></paramdef>
+	      </funcprototype>
+	    </funcsynopsis>
+          </term>
+	  <listitem>
+	    <para>Convert a <varname>tm</varname> structure to a Unix
+	    time.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><funcsynopsis>
+	      <funcprototype>
+		<funcdef>size_t <function>strftime</function></funcdef> 
+		<paramdef>char * <parameter>s</parameter></paramdef>
+		<paramdef>size_t <parameter>maxsize</parameter></paramdef>
+		<paramdef>char * <parameter>format</parameter></paramdef>
+		<paramdef>struct tm * <parameter>tm</parameter></paramdef>
+	      </funcprototype>
+	    </funcsynopsis>
+          </term>
+	  <listitem>
+	    <para>Convert a <varname>tm</varname> structure to a
+formatted string.</para>
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+
+<para>
+In other words, to use the above functions we don't need to know the
+contents of the <varname>tm</varname> structure.
+For the purposes of this example we will place the XS routines into a
+Perl module called <classname>Time</classname>. The first step is to
+create the module infrastructure:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>h2xs -A -n Time</userinput>
+Writing Time/Time.pm
+Writing Time/Time.xs
+Writing Time/Makefile.PL
+Writing Time/test.pl
+Writing Time/Changes
+Writing Time/MANIFEST
+</screen>
+
+<para>
+The first function to implement is <function>gmtime</function> since
+that returns the base structure. Here is a first attempt at the XS
+code:
+</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="3" id="advxs.gmtime.clock">
+	</areaspec>
+<programlisting>
+struct tm *
+gmtime( clock )
+  time_t &amp;clock
+
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="advxs.gmtime.clock">
+	    <para>The ampersand here indicates that we wish to pass a
+	    pointer to the <function>gmtime</function> function. Perl
+	    first copies the argument into the variable
+	    <varname>clock</varname> and then passes the pointer to
+	    the function. Without the ampersand the default behaviour
+	    would be to pass the value to the function.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+
+<para>
+If we attempt to build this (after running <userinput>perl
+Makefile.PL</userinput>) we get the following error:
+</para>
+
+<screen>
+Error: 'struct tm *' not in typemap in Time.xs, line 11
+Please specify prototyping behavior for Time.xs (see perlxs manual)
+make: *** [Time.c] Error 1
+</screen>
+
+<para>
+The problem is that Perl does not now how to deal with a pointer to a
+<varname>tm</varname> structure since it is not present in the default
+typemap file. To fix this we have to create a typemap file (called
+<filename>typemap</filename>) and place it in the build directory.
+Since we are just interested in the pointer (and not the contents) the
+<filename>typemap</filename> just needs to contain the following:
+</para>
+
+<programlisting>
+struct tm *            T_PTR
+</programlisting>
+
+<remark>perlxs indicates that a tab is required between the "*" and
+T_PTR but <command>xsubpp</command> runs fine with just spaces and,
+looking at the code, does not even have a \t in there</remark>
+
+<para>
+<varname>T_PTR</varname> tells Perl to store the pointer address
+directly into a scalar variable. After saving this file the module
+should build successfully.  We can test this with the following:
+</para>
+
+      <screen>
+<prompt>%</prompt> perl -Mblib -MTime -e 'print Time::gmtime(time)'
+1075295360
+</screen>
+
+<para>Your actual result will vary since this is a memory
+address. Now that we have a pointer we can pass it to a
+function. <function>timegm</function> would look like this:
+</para>
+
+<programlisting>
+time_t
+timegm( tm )
+  struct tm * tm
+</programlisting>
+
+<para>
+and could be used as follows:
+</para>
+
+      <programlisting>
+use Time;
+$tm = Time::gmtime( time() );
+$time = Time::timegm( $tm );
+</programlisting>
+
+<para>
+The default implementation of <function>strftime</function> looks like this:
+</para>
+
+<programlisting>
+size_t
+strftime( s, maxsize, format, tm )
+  char * s
+  size_t maxsize
+  char * format
+  struct tm * tm
+ OUTPUT:
+  s
+</programlisting>
+
+<para>
+Unfortunately, although this does work okay there are serious problems
+with the interface to <function>strftime</function> as implemented
+above. To use it you would have to presize the output string and
+provide the length of the output buffer (including the C-specific
+terminating null character) two things that people are used to in C
+but which are completely unacceptable in a perl interface:
+</para>
+
+      <programlisting>
+use Time;
+$tm = Time::gmtime( time() );
+$s = "         ";  # presize output buffer
+$maxsize = length($s)+1; # length must account for the null
+$format = "%D";
+$len = Time::strftime($s, $maxsize, $format, $tm);
+print "length=$len output=$s\n";
+</programlisting>
+
+<para>A much better Perl interface would be something like:</para>
+      <funcsynopsis>
+	<funcprototype>
+	  <funcdef>$s = <function>strftime</function></funcdef> 
+	  <paramdef><parameter>$tm</parameter></paramdef>
+	  <paramdef><parameter>$format</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+<para>where we have removed the input buffer requirement completely
+and rearranged the argument order to place the <varname>tm</varname>
+structure at the start of the list.  One way of implementing this
+interface is to write a pure perl wrapper (placed in the .pm file)
+that deals with the presized buffer and then calls the XS code. Whilst
+this is sometimes easier to implement (especially if you are making
+use of Perl functionality), often it is more efficient to rewrite the
+XS layer using <type>CODE:</type> blocks:
+</para>
+
+<programlisting>
+char *
+strftime( tm, format )
+  struct tm * tm
+  char * format
+ PREINIT:
+  char tmpbuf[128];
+  size_t len;
+ CODE:
+  len = strftime( tmpbuf, sizeof(tmpbuf), format, tm);
+  if (len > 0 && len < sizeof(tmpbuf)) {
+     RETVAL = tmpbuf;
+  } else {
+     XSRETURN_UNDEF;
+  }
+ OUTPUT:
+  RETVAL
+</programlisting>
+
+      <para>This is much better but still not perfect. The problem now
+      is that we don't know the required size of the output buffer
+      before calling <function>strftime</function>. In the above
+      example we simply allocate 128 characters and hope that that is
+      enough. For most cases it will be but if a large format is
+      supplied this function will currently just return
+      <function>undef</function>. One way to overcome this is to check
+      the return value of <function>strftime</function> and increase
+      the buffer size until it is large enough and this is exactly the
+      way that <function>POSIX::strftime</function> is implemented in
+      standard Perl.<footnote><para>see
+      <filename>ext/POSIX/POSIX.xs</filename> in the Perl source tree
+      for details of the implementation of
+      <function>POSIX::strftime</function>.</para></footnote></para>
+
+
+      <para>The example so far has demonstrated how to pass a
+      structure pointer from and to a C library but the interface
+      implemented above has some remaining issues. In the following
+sections we address some of these problems.</para>
+
+<sect3 id="advxs.cstruct.tptr">
+<title>T_PTR versus T_PTRREF</title>
+
+	<para>Using a scalar to store a memory address is dangerous
+	since it is possible that, inadvertently, the Perl program may
+	change the value of an existing pointer (maybe by treating it
+	as a normal number) or may pass an undefined value (0) into
+	the <function>timegm</function> or
+	<function>strftime</function> functions. If any of these
+	things occur the program will crash with a memory error since
+	the value will no longer point to a valid memory location. The
+	best way of dealing with this problem is to use an object
+	interface (see <xref linkend="advxs.struct.oo">) but failing that
+	another option is to return a reference to a scalar containing
+	the pointer value rather than the scalar itself. The
+	<varname>T_PTRREF</varname> typemap designation does exactly
+	that:</para>
+	<programlisting>
+T_PTR
+        sv_setiv($arg, (IV)$var);
+T_PTRREF
+        sv_setref_pv($arg, Nullch, (void*)$var);
+</programlisting>
+
+	<para>This has the advantage that the function will not run
+	unless a scalar reference is passed in (much harder to do by
+	mistake).</para>
+
+</sect3>
+
+<sect3 id="advxs.cstruct.default">
+<title>Default arguments</title>
+
+	<para>Rather than always forcing the time to be supplied a
+	cleaner approach is to allow for the current time to be
+	assumed if no arguments are present. This matches the
+	behaviour of the <function>gmtime</function>
+	builtin.<footnote> <para><function>gmtime</function> is
+	implemented in Perl in the file
+	<filename>pp_sys.c</filename>.</para></footnote></para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="2" id="advxs.struct.def.ellipsis">
+	    <area coords="3" id="advxs.struct.def.preinit">
+	    <area coords="6" id="advxs.struct.def.items">
+	    <area coords="7" id="advxs.struct.def.croak">
+	    <area coords="9" id="advxs.struct.def.svnv">
+	    <area coords="11" id="advxs.struct.def.time">
+	    <area coords="13" id="advxs.struct.def.gmtime">
+	  </areaspec>
+	  <programlisting>
+struct tm *
+gmtime( ... )
+ PREINIT:
+  time_t clock;
+ CODE:
+  if (items > 1)
+     Perl_croak(aTHX_ "Usage: Time::gmtime( [time] )");
+  else if (items == 1)
+     clock = (time_t)SvNV(ST(0));
+  else
+     clock = time( NULL );
+
+  RETVAL = gmtime( &amp;clock );
+ OUTPUT:
+  RETVAL
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="advxs.struct.def.ellipsis">
+	      <para>The ellipsis (<userinput>...</userinput>)
+	      indicates to the XS compiler that the number of input
+	      arguments is not known. In this example there are no
+	      required arguments whereas a signature of
+	      <userinput>gmtime( clock, ...)</userinput> could be used
+	      to indicate that there will be at least one
+	      argument.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.preinit">
+	      <para>There are no required arguments so we have to
+	      explicitly declare the <varname>clock</varname> variable
+	      since <command>xsubpp</command> can no longer determine
+	      this from the argument list.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.items">
+	      <para>The <varname>items</varname> variable is supplied
+	      by the XS system and contains the number of input
+	      arguments waiting on the stack. Here we are checking to
+	      see if more than one argument has been supplied.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.croak">
+	      <para>If more than one argument has been supplied we
+	      stop the program with a
+	      <function>Perl_croak</function>. This provides similar
+	      functionalty to the <function>croak</function> provided
+	      by the <classname>Carp</classname> module.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.svnv">
+	      <para>The ellipsis implies that we have to do our own
+	      argument processing. If there is a single argument the
+	      numeric value is retrieved from the first argument on
+	      the stack (<function>ST(0)</function>). This code is
+	      identical to that found in the standard typemap file
+	      (see <xref linkend="advxs.typemaps">).</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.time">
+	      <para>If there are no arguments the current time is
+	      obtained using the system <function>time</function>
+	      function. The <function>NULL</function> macro is used to
+	      indicate that we are only interested in a return
+	      value.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.def.gmtime">
+	      <para>Run the <function>gmtime</function> using the
+	      value stored in <varname>clock</varname> and store the
+	      pointer in <varname>RETVAL</varname>.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+</sect3>
+
+<sect3 id="advxs.cstruct.static">
+<title>Static memory</title>
+
+	<para>A more worrying problem is associated with the
+	<function>gmtime</function> itself. This always uses the same
+	structure (and therefore returns the same memory address) so
+	each time it is called it overwrites the answer from a
+	previous call. This is evident in the following
+	example:</para>
+	<programlisting>
+use Time;
+$tm1 = Time::gmtime( time() );
+print "First time: ",Time::timegm( $tm1 ), "\n";
+$tm2 = Time::gmtime( time() + 100 );
+
+print "First time (again): ",Time::timegm( $tm1 ), "\n";
+print "Second time: ",Time::timegm( $tm2 ), "\n";
+</programlisting>
+	<para>which prints</para>
+	<screen>
+First time: 983692014
+First time (again): 983692114
+Second time: 983692114
+</screen>
+	<para>This may cause confusion unless very carefully
+	documented (not everyone is an expert C programmer used to
+	these oddities). On systems where it is available one solution
+	is to use <function>gmtime_r</function>, the reentrant
+	(thread-safe) version of this function, since that takes the
+	address of the structure as an argument:</para>
+
+	<programlisting>
+struct tm *
+gmtime( clock );
+  time_t clock;
+ PREINIT:
+  struct tm * tmbuf;
+ CODE:
+  New( 0, tmbuf, 1, struct tm );
+  RETVAL = gmtime_r( &amp;clock, tmbuf );
+ OUTPUT:
+  RETVAL
+</programlisting>
+
+	<para> A more general solution (but not thread-safe) is to
+	copy the result from <function>gmtime</function> into a new
+	structure each time:</para>
+
+	<programlisting>
+struct tm *
+gmtime_cp( clock );
+  time_t clock;
+ PREINIT:
+  struct tm * tmbuf;
+  struct tm * result;
+ CODE:
+  result = gmtime( &amp;clock );
+  New( 0, tmbuf, 1, struct tm );
+  StructCopy( result, tmbuf, struct tm);
+  RETVAL = tmbuf;
+ OUTPUT:
+  RETVAL
+</programlisting>
+	<para>Both these techniques overcome the problem with
+	<function>gmtime</function> but they both introduce a memory
+	leak. The reason for this is that the memory allocated for the
+	new structure (using the <function>New</function> function) is
+	never given back to the system. The Perl scalar containing the
+	memory address attaches no special meaning to it; if the
+	variable goes out of scope the SV is freed without freeing the
+	memory. The C way to deal with this is to provide a function
+	that can be called when the structure is no longer needed (an
+	XS function that simply calls
+	<function>Safefree</function>).</para>
+
+	<para>The more Perl-like way to handle this problem is to turn
+	the structure into an object such that Perl automatically
+	frees the memory when the variable goes out of scope. This
+	approach is discussed in <xref
+	linkend="advxs.struct.oo">. Alternatively, if the structure is
+	fairly simple (and does not contain pointers to other
+	variables) it is possible to either copy the memory contents
+	directly into a perl variable by using the T_OPAQUEPTR typemap
+	entry or to copy the contents into a perl hash. These both
+	have the advantage of allowing perl to keep track of memory
+	management rather than the programmer. The hash approach is
+	partially discussed in <xref
+	linkend="advxs.struct.hash">. Both approaches allow the caller
+	to modify the contents of the hash between calls, it is no
+	longer a black box, and the hash approach does required more
+	work from the XS programmer.</para>
+
+      </sect3>
+
+    </sect2>
+
+    <sect2 id="advxs.struct.oo">
+      <title>...as objects</title>
+
+      <para>An object can be thought of as some data associated with a
+      set of subroutines (methods). In many libraries, C structures
+      take on the same role as objects and Perl can treat them as
+      such. An OO interface to the time functions described earlier
+      may look something like (the use of <function>new</function> as
+      a constructor is purely convention):
+</para>
+<programlisting>
+use Time;
+
+$tm = new Time( time() );
+$time = $tm->timegm;
+$s = $tm->strftime( $format );
+</programlisting>
+
+<para>
+The changes required to the existing <classname>Time</classname>
+module to get this behaviour are not very extensive. In this section
+we will modify the <classname>Time</classname> module so that it
+matches the above interface.</para>
+
+<para>
+The single most important change is to modify the typemap entry to the
+following to use <type>T_PTROBJ</type>.  <type>T_PTROBJ</type> is
+similar to <type>T_PTTREF</type> except that the reference is blessed
+into a class. Here is the OUTPUT entry in the typemap file:
+</para>
+      <programlisting>
+T_PTROBJ
+        sv_setref_pv($arg, \"${ntype}\", (void*)$var);
+</programlisting>
+
+<para>By default the reference will be blessed into class
+<varname>$ntype</varname> which translates to <classname>struct
+tmPtr</classname>! A class containing a space is not very helpful
+since the XS compiler does not know how to handle them. We can get
+around this problem in two ways. We can either create a new OUTPUT
+entry (and corresponding INPUT entry) that uses a hard-wired package
+name:</para>
+
+      <programlisting>
+struct tm *     T_TMPTROBJ
+
+INPUT:
+T_TMPTROBJ
+        if (sv_derived_from($arg, \"TimePtr\")) {
+            IV tmp = SvIV((SV*)SvRV($arg));
+            $var = INT2PTR($type,tmp);
+        }
+        else
+            Perl_croak(aTHX_ \"$var is not of type TimePtr\")
+
+OUTPUT:
+T_TMPTROBJ
+        sv_setref_pv($arg, \"TimePtr\", (void*)$var);
+</programlisting>
+
+<para>
+or we can create a new variable type and associate that with
+<type>T_PTROBJ</type>. We will adopt the latter technique since it is
+more robust against changes to the behaviour of typemap entries. This
+requires the following line to be added before the MODULE line in the
+XS file to generate a new type <type>Time</type> as an alias for
+<type>struct tm</type>:
+</para>
+      <programlisting>
+typedef struct tm Time;
+</programlisting>
+
+<para>
+and the typemap file modified to include:
+</para>
+
+      <programlisting>
+Time *     T_PTROBJ
+</programlisting>
+
+<para>Now wherever we used <type>struct tm</type> we now use
+<type>Time</type>. Here is the new constructor (including all the
+changes suggested earlier):
+</para>
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="advxs.struct.oo.time">
+	  <area coords="2" id="advxs.struct.oo.new">
+	  <area coords="12" id="advxs.struct.oo.svnv">
+	</areaspec>
+      <programlisting>
+Time *
+new( class, ... );
+  char * class
+ PREINIT:
+  time_t clock;
+  Time * tmbuf;
+  Time * result;
+ CODE:
+  if (items > 2)
+     Perl_croak(aTHX_ "Usage: new Time( [time] )");
+  else if (items == 2)
+     clock = (time_t)SvNV(ST(1));
+  else
+     clock = time( NULL );
+
+  result = gmtime( &amp;clock );
+  New( 0, tmbuf, 1, Time );
+  StructCopy( result, tmbuf, Time);
+  RETVAL = tmbuf;
+ OUTPUT:
+  RETVAL
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="advxs.struct.oo.time">
+	    <para>The return value is now a pointer to
+	    <type>Time</type> rather than a pointer to a <type>struct
+	    tm</type>.</para>
+	  </callout>
+	  <callout arearefs="advxs.struct.oo.new">
+	    <para>The function name has changed to
+	    <function>new</function> and now there is one required
+	    argument (the class name) as well as the optional second
+	    argument. This is no different to any other perl method.</para>
+	  </callout>
+	  <callout arearefs="advxs.struct.oo.svnv">
+	    <para>The Unix time is now the second argument
+	    (<function>ST(1)</function>) rather than the first.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+<para>
+The changes are minor compared to the previous non-OO version and
+caused entirely by the extra argument.
+
+<footnote>
+<para>If you are happy to have a non-OO style constructor, simply
+changing the typemap entry would be enough. The calling style would
+then remain</para>
+<programlisting>
+$object = Time::gmtime(); 
+</programlisting>
+<para>except that this would return an object.  
+</para></footnote>
+If you build this module we can check the result of the constructor:
+</para>
+      <screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e 'print new Time()'</userinput>
+TimePtr=SCALAR(0x80f87b8)
+</screen>
+
+<para>As expected it returns an object blessed into class
+<classname>TimePtr</classname>. The complication now is that the
+<methodname>timegm</methodname> and <methodname>strftime</methodname>
+methods must be put into the <classname>TimePtr</classname> package
+and not the default <classname>Time</classname> namespace. We do this
+by adding an addditional MODULE directive after the constructor and
+then adding the methods:
+</para>
+      <programlisting>
+MODULE = Time		PACKAGE = TimePtr
+
+time_t
+timegm( tm )
+  Time * tm
+
+char *
+strftime( tm, format )
+  Time * tm
+  char * format
+ PREINIT:
+  char tmpbuf[128];
+  size_t len;
+ CODE:
+  len = strftime( tmpbuf, sizeof(tmpbuf), format, tm);
+  if (len > 0 && len < sizeof(tmpbuf)) {
+     RETVAL = tmpbuf;
+  } else {
+     XSRETURN_UNDEF;
+  }
+ OUTPUT:
+  RETVAL
+</programlisting>
+
+<para>Other than the extra package declaration these definitions are
+<emphasis>exactly</emphasis> the same as those used previously. Perl
+automatically finds these functions and passes the structure pointer
+(the object) as the first argument.
+</para>
+
+<para>There are at least two reasons to prefer the OO interface over
+storing the plain pointer <footnote><para>Ignoring any preference in syntax of
+<userinput>Time::timegm($tm)</userinput> versus
+<userinput>$tm->timegm</userinput></para></footnote>:</para>
+
+      <variablelist>
+	<varlistentry>
+	  <term>Type safety</term>
+	  <listitem>
+	    <para>The INPUT typemap entry for <type>T_PTROBJ</type>
+	    includes a check for the class of the input variable. This
+	    guarantees that the object is of the correct type. Unless
+	    a programmer really tries hard this will prevent strange
+	    values (with even stranger memory addresses) being passed
+	    to the C layer and causing segmentation faults.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Destructors</term>
+	  <listitem>
+	    <para>As in any Perl class when the object goes out of
+	    scope and is freed Perl will call a
+	    <methodname>DESTROY</methodname>. XS implementations of
+	    perl classes behave in exactly the same way. Recall that
+in the previous implementation the <function>gmtime</function>
+generated a memory leak because it was not possible to automatically
+free the allocated to the structure. As written the current object
+implementation also has the problem but it can be fixed simply by
+adding a <methodname>DESTROY</methodname> function to the
+<classname>TimePtr</classname> class: </para>
+
+	    <programlisting>
+void
+DESTROY( tm )
+  Time * tm
+ CODE:
+  printf("Calling TimePtr destructor\n");
+  Safefree( tm );
+</programlisting>
+
+	    <para>Now whenever a <classname>TimePtr</classname> object
+	    is freed the destructor will be called and the memory will
+	    be freed.</para>
+
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+
+</sect2>
+
+<sect2 id="advxs.struct.hash">
+<title>...as hashes</title>
+
+<para>
+If the main reason for the structure is to group return values that
+are of interest then you should consider unpacking
+the structure into either a Perl hash or a list that can be converted
+into a hash. We will demonstrate both these techniques by extending
+our <classname>Time</classname> module so that it uses a Perl hash
+rather than a structure pointer. For clarity, the examples will not
+include support for defaulting of the time.
+</para>
+
+<sect3 id="advxs.cstruct.rethash">
+<title>Returning a hash reference</title>
+
+<para>
+One way of returning a hash is to return the reference to a hash:
+</para>
+
+<programlisting>
+$hash = Time::gmtime_as_href( time );
+print "Day is ", $hash->{"mday"}, "\n";
+</programlisting>
+
+<para>
+The XS code required for this is:
+</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="advxs.struct.hash.hv">
+	    <area coords="2" id="advxs.struct.hash.name">
+	    <area coords="3" id="advxs.struct.hash.arg">
+	    <area coords="4" id="advxs.struct.hash.preinit">
+	    <area coords="9" id="advxs.struct.hash.gmtime">
+	    <area coords="11" id="advxs.struct.hash.newhv">
+	    <area coords="14" id="advxs.struct.hash.hvstore">
+	    <area coords="23" id="advxs.struct.hash.retval">
+	  </areaspec>
+	  <programlisting>
+HV *
+gmtime_as_href( clock )
+  time_t clock
+ PREINIT:
+  HV * hash;
+  struct tm * tmbuf;
+ CODE:
+  /* Run gmtime */
+  tmbuf = gmtime( &amp;clock );
+
+  hash = newHV();
+
+  /* Copy struct contents into hash */
+  hv_store(hash, "sec",  3, newSViv(tmbuf->tm_sec), 0);
+  hv_store(hash, "min",  3, newSViv(tmbuf->tm_min), 0);
+  hv_store(hash, "hour", 4, newSViv(tmbuf->tm_hour), 0);
+  hv_store(hash, "mday", 4, newSViv(tmbuf->tm_mday), 0);
+  hv_store(hash, "mon",  3, newSViv(tmbuf->tm_mon), 0);
+  hv_store(hash, "year", 4, newSViv(tmbuf->tm_year), 0);
+  hv_store(hash, "wday", 4, newSViv(tmbuf->tm_wday), 0);
+  hv_store(hash, "yday", 4, newSViv(tmbuf->tm_yday), 0);
+
+  RETVAL = hash;
+ OUTPUT:
+  RETVAL
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="advxs.struct.hash.hv">
+	      <para>Here we set the return value of our function to be a
+pointer to a hash. Remember that the argument stack can only contain
+scalar types so the typemap will automatically convert this to a
+hash reference when it is placed on the stack.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.name">
+	      <para>We call this <function>gmtime_as_href</function> to
+distinguish it from the normal <function>gmtime</function> function.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.arg">
+	      <para>Here we just pass in the time in seconds rather
+	      than providing a means for defaulting to the current
+	      time.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.preinit">
+	      <para>This block declares the additional variables that
+	      will be required. <varname>hash</varname> is a pointer
+	      to an HV, <varname>tmbuf</varname> is declared as a
+	      pointer to the struct that will contain the result from
+	      the <function>gmtime</function> call. Since the hash
+	      will also be returned we could have used
+	      <varname>RETVAL</varname> throughout rather than
+	      creating an extra variable but the explicit use of a
+	      variable name is sometimes clearer.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.gmtime">
+	      <para>Call <function>gmtime</function> with the pointer
+	      to the current time.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.newhv">
+	      <para>Create a new hash and store the pointer in <varname>hash</varname>.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.hvstore">
+	      <para>This line and those following store the contents
+of the structure into the hash. The first argument is a pointer to the
+HV, the second argument is the key and the third is the length of the
+key. The fourth argument must be an SV therefore an SV is created
+using the integer from each struct entry. The final argument is the
+hash number itself; since we don't know the value we pass in a
+<literal>0</literal> and ask Perl to calculate it for us. One final
+thing to note is that <function>hv_store</function> does not affect
+the reference count of the SV that is being stored. This means that
+each of the SV's stored in the hash will automatically have a refcount
+of <literal>1</literal>.
+</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.hash.retval">
+	      <para>The hash has been populated so we can copy the
+pointer to the RETVAL variable.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+<para>
+Whilst the above XS code does work, returning a reference to a hash
+containing the <function>gmtime</function> results, there is a subtle
+bug in the above code as can be illustrated by the following output:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -MDevel::Peek -e '$h=Time::gmtime_as_href(time);Dump($h)'</userinput>
+SV = RV(0x81109b4) at 0x815bd54
+  REFCNT = 1
+  FLAGS = (ROK)
+  RV = 0x80f86e0
+  SV = PVHV(0x81429a8) at 0x80f86e0
+    REFCNT = 2
+    FLAGS = (SHAREKEYS)
+    IV = 8
+    NV = 0
+    ARRAY = 0x81003d8  (0:2, 1:5, 3:1)
+    hash quality = 85.7%
+    KEYS = 8
+    FILL = 6
+    MAX = 7
+    RITER = -1
+    EITER = 0x0
+    ...
+</screen>
+
+<para>
+This shows that the reference count to the HV is 2. The variable
+<varname>$h</varname> has one of the references but there are no other
+variables that know about the reference.  This constitutes a memory
+leak. If <varname>$h</varname> is later undefined or goes out of
+scope, the reference count on the HV will drop to <literal>1</literal>
+but it can't go any lower. Since it never goes to zero the HV will not
+be freed until the program exits.  The reason for this is that when
+the HV is created using <function>newHV</function> its reference count
+is set to one as expected. The output typemap entry for an HV is
+</para>
+<programlisting>
+T_HVREF
+   $arg = newRV_inc((SV*)$var);
+</programlisting>
+<para>
+which increments the reference count when the reference is
+taken. At this point there is an SV containing a reference to the hash
+on the stack and the <varname>hash</varname> variable containing the
+HV and the reference count is now, correctly,
+<literal>2</literal>. Unfortunately when the XS function exits the
+<varname>hash</varname> variable simply disappears without decrementing the
+reference count. Perl overcomes problems such as this by introducing
+the concept of <firstterm>mortality</firstterm>. If an SV is marked as
+mortal the reference count will automatically be decremented at some
+point later in time. For XS functions, mortal variables have their
+reference count decremented on exit from the function. The above code
+can be fixed to avoid the memory leak simply by marking
+<varname>hash</varname> as mortal with:
+</para>
+<programlisting>
+hash = (HV*)sv_2mortal((SV*)newHV());
+</programlisting>
+<para>
+The new sequence now becomes:
+</para>
+	<orderedlist>
+	  <listitem>
+	    <para>Create new HV and increment reference
+	    count. Reference count = <literal>1</literal></para>
+	  </listitem>
+	  <listitem>
+	    <para>Mark HV as mortal. Reference count =
+	    <literal>1</literal></para>
+	  </listitem>
+	  <listitem>
+	    <para>Take reference to HV and store it on the argument
+	    stack. Reference count = <literal>2</literal></para>
+	  </listitem>
+	  <listitem>
+	    <para>Exit XS function and automatically decrement the
+	    reference count. Reference count =
+	    <literal>1</literal></para>
+	  </listitem>
+	</orderedlist>
+
+<para>
+If this change is made the test program now reports the correct
+reference count for <varname>$h</varname>:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -MDevel::Peek -e '$h=Time::gmtime_as_href(time);Dump($h)'</userinput>
+SV = RV(0x81109b4) at 0x815bd54
+  REFCNT = 1
+  FLAGS = (ROK)
+  RV = 0x80f86e0
+  SV = PVHV(0x81429a8) at 0x80f86e0
+    REFCNT = 1
+    FLAGS = (SHAREKEYS)
+    IV = 8
+    NV = 0
+    ARRAY = 0x81003d8  (0:2, 1:5, 3:1)
+    hash quality = 85.7%
+    KEYS = 8
+    FILL = 6
+    MAX = 7
+    RITER = -1
+    EITER = 0x0
+    Elt "yday" HASH = 0x4630b8
+    SV = IV(0x81073b8) at 0x815bcdc
+      REFCNT = 1
+      FLAGS = (IOK,pIOK)
+      IV = 77
+    Elt "wday" HASH = 0x450f30
+    SV = IV(0x81073b4) at 0x815bce8
+      REFCNT = 1
+      FLAGS = (IOK,pIOK)
+      IV = 1
+    Elt "mday" HASH = 0x3f6788
+    SV = IV(0x81071cc) at 0x8104354
+      REFCNT = 1
+      FLAGS = (IOK,pIOK)
+      IV = 19
+</screen>
+
+
+</sect3>
+
+<sect3 id="advxs.cstruct.retlist">
+<title>Returning a list</title>
+
+<para>
+An alternative way of returning a hash is to return a list with
+alternating keys and values:
+</para>
+
+<programlisting>
+%hash = Time::gmtime_as_list( time );
+print "Day is ", $hash{"mday"}, "\n";
+</programlisting>
+
+<para>
+The XS code for this must push the keys and the values on to the argument
+stack just as if this was a normal Perl routine:
+</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="advxs.struct.list.void">
+	    <area coords="6" id="advxs.struct.list.ppcode">
+	    <area coords="9" id="advxs.struct.list.extend">
+	    <area coords="11" id="advxs.struct.list.push">
+	  </areaspec>
+	  <programlisting>
+void
+gmtime_as_list( clock )
+  time_t clock
+ PREINIT:
+  struct tm * tmbuf;
+ PPCODE:
+  tmbuf = gmtime( &amp;clock );
+
+  EXTEND(SP, 16);
+
+  PUSHs( sv_2mortal( newSVpv("sec", 3) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_sec) ));
+  PUSHs( sv_2mortal( newSVpv("min", 3) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_min) ));
+  PUSHs( sv_2mortal( newSVpv("hour", 4) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_hour) ));
+  PUSHs( sv_2mortal( newSVpv("mday", 4) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_mday) ));
+  PUSHs( sv_2mortal( newSVpv("mon", 3) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_mon) ));
+  PUSHs( sv_2mortal( newSVpv("year", 4) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_year) ));
+  PUSHs( sv_2mortal( newSVpv("wday", 4) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_wday) ));
+  PUSHs( sv_2mortal( newSVpv("yday", 4) ));
+  PUSHs( sv_2mortal( newSViv(tmbuf->tm_yday) ));
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="advxs.struct.list.void">
+	      <para>Here we use <type>void</type> as a return value for
+	      the function since the return values will be handled
+	      directly by the routine rather than by the XS
+	      compiler.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.list.ppcode">
+	      <para>We use PPCODE rather than CODE to indicate to the
+	      XS compiler that we are handling the return values
+	      ourselves. This does not affect the processing of input
+	      arguments but does imply that OUTPUT can not be used.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.list.extend">
+	      <para>The <function>EXTEND</function> macro makes sure
+	      that the argument stack is large enough to contain the
+	      requested number of arguments. Since we know that we
+	      will need to hold 16 items (8 keys and 8 values) we
+	      presize the stack for efficiency. This is similar to
+	      using <userinput>$#array = 15;</userinput> in
+	      perl. <varname>SP</varname> is the Stack Pointer
+	      (pointing to the current position in the stack) and is
+	      initialised for you automatically on entry to the routine.</para>
+	    </callout>
+	    <callout arearefs="advxs.struct.list.push">
+	      <para>Here we need to start pushing arguments onto the
+	      stack. For XS programmers the only approved ways of
+	      pushing arguments onto the stack are the
+	      <function>PUSHs</function> and
+	      <function>XPUSHs</function> macros. These push an SV
+	      onto the argument stack. The difference is that
+	      <function>XPUSHs</function> extends the size of the
+	      stack by one so that it is guaranteed to have room for
+	      the incoming SV. In this example we could have used
+	      <function>XPUSHs</function> instead of
+	      <function>PUSHs</function> and removed the
+	      <function>EXTEND</function> call. Since we can only push
+	      SVs onto the stack each argument (string key or integer
+	      value) is first converted to an SV and then marked as a
+	      mortal. All SVs pushed on to the stack must be marked as
+	      mortal so that they can be freed after assignment. The
+	      reason for this is that a copy of the SV is assigned to
+	      a perl variable and not the original SV. If this was not
+	      the case <userinput>$a = $b</userinput> would alias
+	      <varname>$a</varname> to <varname>$b</varname>!</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+<sidebar>
+<para>
+Whilst it may be tempting to make use of the
+<function>PUSHi</function>, <function>PUSHp</function> and
+<function>PUSHn</function> functions (and the related
+<function>XPUSH</function>) to push plain integers, strings and floats
+onto the stack in XS routines they do not form part of the XS
+API. These routines are intended for use by the internals and can only
+be used to return a single value onto the stack. This is because they
+use a single SV (that must be declared using the
+<function>dTARG</function> macro) and if 5 values are pushed onto the
+stack with these functions they will all receive the value of the last
+thing that was pushed on because it is the pointer to the same SV that
+is stored on the stack.
+</para>
+</sidebar>
+
+</sect3>
+
+<sect3 id="advxs.cstruct.backc">
+<title>Passing it back into C</title>
+
+	<para>Both these techniques (returning a list or returning a
+	hash reference) overcome the memory leak problem described
+	earlier. The reason for this is that the information is copied
+	to a perl data structure and not kept inside a C
+	structure. Perl knows nothing about the C structure so can
+	only free its memory via an object destructor. When using
+	hashes to store the information Perl can free the memory
+	directly. Unfortunately this behaviour comes at a price when
+	it is time to pass the information back to C. If the
+	information is only required for information (e.g. the data
+	returned from a call to <function>stat</function>) then this
+	is not a problem, but if the data is to be passed back into C
+	(e.g. to the <function>timegm</function> function) then more
+	work is required because the data must be converted from the
+	hash to a C structure. Even worse, you can no longer rely on
+	the integrity of the data structure since the contents of the
+	hash can be changed arbitrarily before they are passed back
+	to C. If structure integrity is a problem then you should
+	probably be using objects.</para>
+
+      </sect3>
+
+    </sect2>
+
+</sect1>
+
+<sect1 id="advxs.arrays">
+    <title>Arrays</title>
+
+    <para>In some cases a C routine might want to receive an array of
+    numbers or strings. To handle this you will have to convert the
+    perl array or list into a C array before calling the C
+    function. This usually involves the following steps:</para>
+
+    <orderedlist>
+      <listitem>
+	<para>Allocating some memory to hold the array.</para>
+      </listitem>
+      <listitem>
+	<para>Copying each element from the list/array to the C array.</para>
+      </listitem>
+      <listitem>
+	<para>After the C function has run, free the memory.</para>
+      </listitem>
+    </orderedlist>
+
+    <sect2 id="advxs.numarr">
+      <title>Numeric arrays</title>
+
+      <para>It is quite a common requirement, especially in the
+      scientific community, to be able to pass arrays of numbers to
+      and from C. This section will first describe how to deal with
+      1-dimensional arrays and then move on to discuss
+      multi-dimensional arrays. It will finish with some benchmarking
+      examples to provide a guide for the most efficient handling of
+      arrays and lists.</para>
+
+      <para>One additional point is that this section deals with
+      converting the lists and arrays to C arrays and not simply
+      manipulating a Perl array <quote>as-is</quote>. The easiest way to
+      handle a Perl array in C as a Perl array is simply to pass in
+      the array reference and manipulating the <type>AV*</type> in C
+      code.</para>
+
+      <sect3>
+	<title>into C</title>
+
+    <para>In this section we will illustrate how to pass Perl numeric arrays
+    to C by providing an XS interface to a function that will sum the
+    elements of the array and return the answer to Perl. The signature
+    of the C function will be:</para>
+    <funcsynopsis>
+      <funcprototype>
+	<funcdef>int <function>sum</function></funcdef>
+	<paramdef>int <parameter>count</parameter></paramdef>
+	<paramdef>intArray * <parameter>array</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+    <para>where <type>intArray</type> is typedef'ed to an int so that
+    XS can distinguish a pointer to an integer from a pointer to an
+    array of integers (they are both written as <type>int *</type> in
+    C). For this example the module will be called
+    <classname>Arrays</classname>. Here is the top of the XS file
+    including the <function>sum</function> function:</para>
+
+    <programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+typedef int intArray;
+
+/* Add up everything in an int array */
+/* Args: the number of things to add, pointer to array */
+
+int sum ( int num, intArray * array ) {
+  int thesum = 0;
+  int count;
+  for (count = 0; count < num; count++) {
+    thesum += array[count];
+  }
+  return thesum;
+}
+
+MODULE = Arrays		PACKAGE = Arrays
+
+</programlisting>
+
+    <sect4 id="advxs.arrays.asalist">
+      <title>...as a list</title>
+
+      <para>One of the simplest ways to pass an array into XS (and
+      into other Perl subroutines) is simply to pass in a list:</para>
+
+      <programlisting>$sum = Arrays::sum_as_list( @values );
+</programlisting
+
+      <para>Here each element of the array <varname>@values</varname>
+is pushed onto the argument stack so in XS each argument must be
+retrieved from the stack and copied into a C array. Perl provides the
+T_ARRAY typemap entry for handling this situation:
+</para>
+
+<programlisting>
+int
+sum_as_list( array, ...)
+  intArray * array
+ CODE:
+  /* ix_array is the total number of elements */
+  RETVAL = sum( ix_array, array );
+ OUTPUT:
+  RETVAL
+ CLEANUP:
+  Safefree( array );
+</programlisting>
+
+      <para>This all looks fairly straightforward but there are many
+      things going on behind the scenes:</para>
+      <itemizedlist>
+	  <listitem>
+	    <para>T_ARRAY is unique in the standard typemap file in
+	    that it is designed to work on multiple input
+	    arguments. The ellipsis (...) is used to indicate an
+	    unknown number of arguments are expected but they are all
+	    processed as part of the typemap entry.</para>
+	  </listitem>
+	  <listitem>
+	    <para>T_ARRAY is greedy. Only a single XS argument can be
+	    associated with T_ARRAY and it must be the last argument
+	    in the list. This should not be surprising since it is
+	    doing the C equivalent of <userinput>@args =
+	    @_;</userinput> There can be arguments before the final
+	    list.</para>
+	  </listitem>
+	  <listitem>
+	    <para>T_ARRAY creates a variable called
+	    <varname>ix_${var}</varname> (in our example this is
+	    <varname>ix_array</varname>) that contains the number of
+	    elements processed by T_ARRAY.</para>
+	  </listitem>
+	  <listitem>
+	    <para>Memory must be allocated in which to store the new
+	    integer array. T_ARRAY assumes that there is a memory
+	    allocation function called <varname>$ntype</varname> (in
+	    this case <function>intArrayPtr</function>) that will
+	    return a pointer to some memory. It is passed a single
+	    argument containing the number of elements in the
+	    array. Of course, this memory must be freed at the end of
+	    the XS function.</para>
+	  </listitem>
+	  <listitem>
+	    <para>The XS compiler works out how to copy elements from
+	    the Perl list into the C array by guessing the C type of
+	    the variables from the type of the array. It does this by
+	    removing any mention of <quote>Array</quote> and
+	    <quote>Ptr</quote> from the <varname>$ntype</varname>
+	    variable and then looking in the standard typemap entry
+	    for the resulting string. In this example
+	    <varname>$ntype</varname> is <type>intArrayPtr</type> so
+	    each element is copied using the <type>int</type> typemap
+	    entry. </para>
+	  </listitem>
+	</itemizedlist>
+
+	  <para>As it stands, the above code will not compile because
+	  <command>xsubpp</command> does not know that variables of
+	  type <type>intArray *</type> need to be processed using the
+	  T_ARRAY typemap entry. In order to do this we need to create
+	  a file called <filename>typemap</filename> and put in one
+	  line:</para>
+
+	  <programlisting>
+intArray *            T_ARRAY
+</programlisting>
+
+
+	  <para>For completeness, here is the typemap entry for T_ARRAY:</para>
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="u32">
+	  <area coords="2" id="ntype">
+	  <area coords="3" id="while">
+	  <area coords="4" id="doarrayelem">
+	  <area coords="8" id="nelem">
+	</areaspec>
+	<programlisting>
+        U32 ix_$var = $argoff;
+        $var = $ntype(items -= $argoff);
+        while (items--) {
+            DO_ARRAY_ELEM;
+            ix_$var++;
+        }
+        /* this is the number of elements in the array */
+        ix_$var -= $argoff
+
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="u32">
+	    <para>Declare a new variable and set it initially to the
+	    position of the first element in the list. This
+	    declaration does cause problems if previous arguments have
+	    used complicated typemaps themselves. This is because C
+	    does not like variable declarations part way through a
+	    block. This issue is discussed further in <xref
+	    linkend="advxs.inside"></para>
+	  </callout>
+	  <callout arearefs="ntype">
+	    <para>Allocate some memory using function
+	    <varname>$ntype</varname>. The requested number of
+	    elements is calculated by using (and modifying)
+	    <varname>items</varname>. XS automatically sets this
+	    variable to the total number of XS arguments. </para>
+	  </callout>
+	  <callout arearefs="while">
+	    <para>Loop over each element until there are no more
+	    remaining. <varname>items</varname> is decremented until
+	    it hits zero whilst <varname>ix_$var</varname> is
+	    incremented to provide an index into the argument
+	    list.</para>
+	  </callout>
+	  <callout arearefs="doarrayelem">
+	    <para>DO_ARRAY_ELEM is the magic used by the XS compiler
+	    to indicate that an element must be copied from the stack
+	    to <varname>$var</varname>. It uses
+	    <varname>ix_$var</varname> to index into the stack and
+	    derives the type of the element from the type of the
+	    array.</para>
+	  </callout>
+	  <callout arearefs="nelem">
+	    <para>Finally, reset the value of
+	    <varname>ix_$var</varname> so that it now reflects the
+	    number of elements in the C array.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>So far we have not said much  about the memory
+	allocation function in the current example. The default
+	allocator (implied by the use of the
+	<function>Safefree</function> function in the above example)
+	could look something like this:</para>
+
+<programlisting>
+intArray * intArrayPtr ( int num ) {
+  intArray * array;
+
+  New(0,array, num, intArray );
+  return array;
+}
+</programlisting>
+
+<para>where we simply use the <function>New</function> macro to
+allocate <varname>num</varname> integers and return the
+pointer. Whilst this will work we still have to make sure that the
+memory is freed when we have finished with it. In most cases this just
+involves the use of a CLEANUP block in the XS definition since we
+usually don't want to keep the memory. Since laziness is sometimes a
+virtue there is another approach to memory allocation which will
+obviate the need for the CLEANUP block. During the discussion of
+structure handling we introduced the concept of mortality. Perl uses 
+mortal variables to make sure that variables are automatically freed
+when a Perl scope is exited. We can make use of this fact by
+allocating memory in a Perl scalar, marking it as mortal and then
+letting perl free the memory when the XS function is completed.
+The memory allocation function then becomes:
+</para>
+
+<programlisting>
+intArray * intArrayPtr ( int num ) {
+  SV * mortal;
+  mortal = sv_2mortal( NEWSV(0, num * sizeof(int) ) );
+  return (intArray *)SvPVX(mortal);
+}
+</programlisting>
+<para>This function creates a new SV and makes sure that the PV part
+of the SV is large enough to hold the required number of integers (the
+<function>sizeof</function> function is used to determine how many
+bytes are required for each integer). This SV is marked as mortal and
+the pointer to the PV part is returned using the
+<function>SvPVX</function> macro.  If this function is used the
+CLEANUP section of <function>array_as_list</function> can then be
+removed.</para>
+
+
+
+<para>If we place this memory allocation function before the XS code
+and remove the CLEANUP section this example, once built, will sum up
+all elements in an array:
+</para>
+
+      <screen>
+<userinput><prompt>%</prompt> perl -Mblib -MArrays -e 'print Arrays::sum_as_list(5,6,7)'</userinput>
+18
+</screen>
+
+<remark>Do we need to show the complete example again?</remark>
+
+    </sect4>
+
+    <sect4>
+      <title>...as an array reference</title>
+
+      <para>Just like when programming in Perl, an alternative to
+      passing in a list is to pass in a reference to an array:</para>
+
+      <programlisting>
+$sum = Arrays::sum_as_ref( \@values );
+</programlisting>
+
+<para>The main advantage of this technique is that multiple arrays can
+be passed to a function. The XS code for this is as follows:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	    <area coords="3" id="avref">
+	    <area coords="7" id="svstarstar">
+	    <area coords="10" id="avlen">
+	    <area coords="11" id="malloc">
+	    <area coords="14" id="loop">
+	    <area coords="15" id="avfetch">
+	    <area coords="16" id="null">
+	    <area coords="19" id="deref">
+	    <area coords="22" id="sum">
+	</areaspec>
+	<programlisting>
+int
+sum_as_ref( avref )
+  AV * avref;
+ PREINIT:
+  int len;
+  int i;
+  SV ** elem;
+  intArray * array;
+ CODE:
+  len = av_len( avref ) + 1;
+  array = intArrayPtr( len );
+
+  /* copy numbers from Perl array */
+  for (i=0; i&lt;len; i++) {
+    elem = av_fetch( avref, i, 0);
+    if (elem == NULL) {
+      array[i] = 0;
+    } else {
+      array[i] = SvIV( *elem );
+    }
+  }
+  RETVAL = sum( len, array );
+ OUTPUT:
+  RETVAL 
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="avref">
+	      <para>The argument is a pointer to an AV. The default
+	      typemap entry will make sure that we have an array
+	      reference and will exit the program if we don't get
+	      one.</para>
+	    </callout>
+	    <callout arearefs="svstarstar">
+	      <para>Declare <varname>elem</varname> as a pointer to a
+	      pointer to an SV. This is the type of variable returned
+	      by <function>av_fetch</function>.</para>
+	    </callout>
+	    <callout arearefs="avlen">
+	      <para>Find out how many elements are in the array.</para>
+	    </callout>
+	    <callout arearefs="malloc">
+	      <para>Allocate some memory for the C array using the
+	      same function that we used for
+	      <function>sum_as_list</function>.</para>
+	    </callout>
+	    <callout arearefs="loop">
+	      <para>Loop over each element in the AV, copying it to
+	      the C array.</para>
+	    </callout>
+	    <callout arearefs="avfetch">
+	      <para>Retrieve the i'th element from the array.</para>
+	    </callout>
+	    <callout arearefs="null">
+	      <para>A complication here is that
+	      <function>av_fetch</function> can return
+	      <type>NULL</type> for the requested element. This means
+	      that we first have to check that the pointer is valid
+	      before dereferencing it.</para>
+	    </callout>
+	    <callout arearefs="deref">
+	      <para>Copy the integer part of the SV to the C
+	      array. Since <function>SvIV</function> expects a pointer
+	      to an SV we must dereference
+	      <varname>elem</varname>.</para>
+	    </callout>
+	    <callout arearefs="sum">
+	      <para>Finally run the <function>sum</function> function.</para>
+	    </callout>
+	  </calloutlist>
+      </programlistingco>
+
+<para>Once built this should produce the same answer as the previous
+example but this time an array reference is used:
+</para>
+
+      <screen>
+<userinput><prompt>%</prompt> perl -Mblib -MArrays -e 'print Arrays::sum_as_ref([5,6,7])'</userinput>
+18
+</screen>
+
+<para></para>
+
+    </sect4>
+
+    <sect4 id="advxs.arrays.num.pack">
+      <title>...as a packed string</title>
+
+	<sidebar>
+	  <para>In XS the sense of pack/unpack and input/output are
+	  very different to that expected by a Perl programmer. INPUT
+	  is used in XS to indicate data passing into C (and out
+	  of Perl) and OUTPUT is used to indicate data passing out of
+	  C and into Perl. More confusing is that occassionally you
+	  will see the term <quote>pack</quote> used to indicate
+	  conversion of a C array to a Perl array and
+	  <quote>unpack</quote> to indicate conversion of a Perl array to
+	  a C array. This is completely different to the Perl use of
+	  the <function>pack</function> and
+	  <function>unpack</function> functions and we will use the
+	  Perl sense in this chapter. This means that a C array is a
+	  packed form of a perl array. This makes sense since a C
+	  array uses less memory than a perl array. These confusions
+	  arise because XS exists so that Perl data can be handled by
+	  the Perl internals and therefore the internals are seen as
+	  the primary consumer of the data.</para>
+	</sidebar>
+
+
+	<para>The third way to pass an array into C is to pack the
+	perl array into a byte string and then pass that string into C
+	where it will be treated as a C array. From perl this would
+	look like the following:</para>
+
+	<programlisting>
+$packed = pack("i*", @values);
+$sum = Arrays::sum_as_packed( $packed );
+</programlisting>
+
+
+	<para>In XS you could implement this as follows:</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="3" id="sv">
+	    <area coords="8" id="retrieve">
+	    <area coords="9" id="len">
+	  </areaspec>
+	  <programlisting>
+int
+sum_as_packed( packed )
+  SV * packed
+ PREINIT:
+  int len;
+  intArray * array;
+ CODE:
+  array = (intArray *)SvPV( packed, PL_na );
+  len = SvCUR( packed ) / sizeof(intArray);
+  RETVAL = sum( len, array );
+ OUTPUT:
+  RETVAL
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="sv">
+	      <para>We want to interrogate the SV directly rather than
+extracting a specific piece of information.</para>
+	    </callout>
+	    <callout arearefs="retrieve">
+	      <para>Retrieve a pointer to the byte array from the SV</para>
+	    </callout>
+	    <callout arearefs="len">
+	      <para>Calculate the number of elements in the array by
+	      asking the SV for the total number of bytes and then
+	      dividing by the number of bytes used to represent an
+	      integer.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+	<para>The main point here is that we are using the SV directly
+	rather than asking XS to translate it for us. This is useful
+	since the SV knows how many bytes it is holding. If this
+	information is not required or if you can pass in the number
+	of elements of the array as an argument<footnote><para>only if
+	using an intermediary wrapper function. Do not ask people to
+	provide information that perl already knows!</para></footnote>
+	this XS code can be simplified:</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="2" id="args">
+	    <area coords="4" id="char">
+	    <area coords="6" id="cast">
+	  </areaspec>
+	<programlisting>
+int
+sum_as_packed2( len, packed )
+  int len
+  char * packed
+ CODE:
+  RETVAL = sum( len, (intArray *)packed );
+ OUTPUT:
+  RETVAL
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="args">
+	      <para>Now the length of the array is included as an argument.</para>
+	    </callout>
+	    <callout arearefs="char">
+	      <para>Use <type>char *</type> to indicate that we are
+	      interested in the PV part of the SV. Alternatively we
+	      could have associated <type>intArray *</type> with T_PV
+	      in the typemap file.</para>
+	    </callout>
+	    <callout arearefs="cast">
+	      <para>Since we have a pointer to a <type>char</type> we
+	      have to cast the pointer to type <type>intArray</type>
+	      before passing it to the <function>sum</function>
+	      function.</para>
+	    </callout>
+	  </calloutlist>
+</programlistingco>
+
+
+    </sect4>
+
+	</sect3>
+
+      <sect3>
+	<title>out of C</title>
+
+      <para>Arrays can be returned to Perl as either a list pushed
+      onto the stack or by creating an array and returning the
+      reference.  We saw in <xref linkend="advxs.struct.hash"> how to
+      return a hash reference and a list and the only difference for
+      arrays is the use of <function>av_</function> functions rather
+      than <function>hv_</function> functions. </para>
+
+      <para>This section will highlight some additional methods for
+      returning (numeric) arrays which may be useful. We put these
+      here for completeness, since they are used in existing code, but
+      they are probably not the best approach for new code.</para>
+
+
+      <sect4>
+	<title>...as a list without PPCODE</title>
+
+	<para>The T_ARRAY typemap entry was used in <xref
+	linkend="advxs.arrays.asalist"> to pass a list into C and it
+	can, in principal, also be used to return a list from C
+	without having to worry about looping and using the
+	<function>PUSHs</function> macro (see <xref
+	linkend="advxs.struct.hash"> for details on pushing elements
+	onto the return stack).</para>
+
+	<para>The main problem with this is that it only works with XS
+	CODE blocks (since OUTPUT typemap entries are only used when
+	the OUTPUT keyword is used in XS) but the XS compiler always
+	forces a single return value. In general it is safer to ignore
+	T_ARRAY for output and just use PPCODE instead.</para>
+
+	<para>If you do want to use this then the easiest trick is
+	simply to co-opt the CLEANUP section and make explicit use of
+	the <function>XSRETURN</function> function. Here is an example
+	of how to use T_ARRAY to return an array of integers:</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="rettype">
+	    <area coords="4" id="array">
+	    <area coords="5" id="size">
+	    <area coords="7" id="assign">
+	    <area coords="8" id="setsize">
+	    <area coords="9" id="setarr">
+	    <area coords="11" id="output">
+	    <area coords="13" id="cleanup">
+	  </areaspec>
+	  <programlisting>
+intArray *
+test_t_array()
+ PREINIT:
+  intArray test[2];
+  U32 size_RETVAL;
+ CODE:
+  test[0] = 1; test[1] = 2;
+  size_RETVAL = 2;
+  RETVAL = test;
+ OUTPUT:
+  RETVAL
+ CLEANUP:
+  XSRETURN(size_RETVAL);
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="rettype">
+	      <para>The return type is now a pointer to an array. This
+	      uses the same typemap we have used for the previous
+	      array examples.</para>
+	    </callout>
+	    <callout arearefs="array">
+	      <para>Create a test array in C to contain 2 elements.</para>
+	    </callout>
+	    <callout arearefs="size">
+	      <para>T_ARRAY requires the declaration of this variable
+	      (technically declared as <varname>size_$var</varname> in
+	      the typemap file but this variable will almost always be
+	      associated with <varname>RETVAL</varname>). It is used
+	      by the typemap to determine how many elements in the
+	      array are to be copied to the stack.</para>
+	    </callout>
+	    <callout arearefs="assign">
+	      <para>For this example simply copy two numbers into the
+	      array. </para>
+	    </callout>
+	    <callout arearefs="setsize">
+	      <para>Store the size of the array.</para>
+	    </callout>
+	    <callout arearefs="setarr">
+	      <para><varname>RETVAL</varname> now points to the first
+	      element of our test array.</para>
+	    </callout>
+	    <callout arearefs="output">
+	      <para>Mark <varname>RETVAL</varname> for output.</para>
+	    </callout>
+	    <callout arearefs="cleanup">
+	      <para>This macro will exit the XS routine just before
+	      the normal exit provided by
+	      <command>xsubpp</command>. The argument indicates how
+	      many items have been placed on the return stack.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+      </sect4>
+
+      <sect4>
+	<title>...as a packed string</title>
+
+	<para>Just as it is possible to pass to XS a byte array
+	generated by the Perl <function>pack</function> function (see
+	<xref linkend="advxs.arrays.num.pack">) it is also possible to
+	return a byte array that can be unpacked with the Perl
+	<function>unpack</function> function. If you know how many
+	elements are to be stored in the array at compile time XS
+	provides a way or returning the packed string to Perl. This
+	example returns 3 integers as a packed string:</para>
+
+	<programlisting>
+array(int, 3)
+return_packed()
+ PREINIT:
+  intArray test[3];
+ CODE:
+  test[0] = 1; test[1] = 2; test[2] = 3;
+  RETVAL = test;
+ OUTPUT:
+  RETVAL
+</programlisting>
+
+	<para>When compiled this code copies <userinput>3 x
+	sizeof(int)</userinput> bytes from
+	<varname>RETVAL</varname>. They can be unpacked in perl with
+	<userinput>unpack("i*",$retval)</userinput>.</para>
+
+	<para>If the size of the return array is not known at
+	compile-time the bytes must be copied to the perl variable
+	using a modified form of the T_OPAQUEPTR typemap entry:</para>
+
+	<programlisting>
+intArray *
+return_npacked()
+ PREINIT:
+  U32 size_RETVAL;
+  intArray test[3];
+ CODE:
+  test[0] = 1; test[1] = 2; test[2] = 3;
+  size_RETVAL = 3;
+  RETVAL = test;
+ OUTPUT:
+  RETVAL
+</programlisting>
+
+<para>with a corresponding typemap entry of:</para>
+
+<programlisting>
+intArray *	T_OPAQUEARRAY
+
+OUTPUT
+T_OPAQUEARRAY
+	sv_setpvn($arg, (char *)$var, size_$var * sizeof(*$var));
+</programlisting>
+
+<para>Here we associate <type>intArray *</type> with T_OPAQUEARRAY.
+The only difference between this and T_OPAQUEPTR is that we have
+used the <varname>size_$var</varname> variable to indicate how many
+elements to copy.</para>
+
+
+	<para>In general, if packed strings are returned and the bytes
+	are not required directly, it is usually better to provide a
+	perl wrapper to the XS function so that the bytes are hidden
+	from the caller.</para>
+
+	<sidebar>
+	  <para>When looking through the typemap file you will see
+	  entries called T_PACKED and T_PACKEDARRAY. These are not
+	  designed for dealing with packed strings!</para>
+	</sidebar>
+
+      </sect4>
+
+</sect3>
+
+      <sect3>
+	<title>The Perl Data Language</title>
+
+	<para>If you are dealing with large or multi-dimensional
+	arrays the techniques described so far will probably prove
+	inadequate and you should seriously consider changing approach
+	and using PDL.  The Perl Data Language (<ulink
+	url="http://pdl.perl.org">PDL</ulink>) was developed as a
+	means to handle multi-dimensional arrays in perl compactly and
+	efficiently. These three issues are extremely important in
+	scientific computing and image processing for the following
+	reasons:</para>
+
+	<remark>Reviewer suggests a diagram indicating what a
+	multi-dimensional array really looks like. Presumably 3-d
+	example as a diagram of stacked 2-d grids</remark>
+
+	<variablelist>
+	  <varlistentry>
+	    <term>multi-dimensionality</term>
+	    <listitem>
+	      <para>Perl has no real concept of multi-dimensional
+	      arrays. An array can have references to other arrays in
+	      order to simulate additional dimensions but there is
+	      nothing in the language to force the same number of
+	      elements in each row or column. When the dimensionality
+	      is greater than two the perl approach becomes unwieldy
+	      and it is very time consuming to check the
+	      dimensionality of the data.  The following code shows
+	      how perl handles a 1-, 2- and 3-d array:</para>
+
+		<programlisting>
+@oned   = ( 1, 2 );
+@twod   = ( [1,2], [3,4] );
+@threed = ( [ [1,2], [3,4] ],  [ [5,6],[7,8] ] );
+</programlisting>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term>compactness</term>
+	    <listitem>
+	      <para>When the number of elements in array is large, the
+	      representation of that array can have an enormous effect
+	      on the memory requirements of the program. In <xref
+	      linkend="perlvar.arrays"> we saw that both Perl arrays
+	      and Perl scalars have a significant memory overhead
+	      compared to that required for single numbers but that
+	      this is accepted because of the enormous gain in
+	      functionality this brings. In situations where we are
+	      dealing with blocks of numbers this flexibility is not
+	      required. As an example, in the 3-d array above, this
+	      requires 7 perl arrays, 8 integer scalars and 6
+	      references. On a 32-bit linux system this is about 128
+	      bytes for just 8 numbers (assuming 12 bytes for
+	      <type>sv_any</type>, 16 bytes for a <type>xpviv</type>
+	      and 44 bytes for a <type>xpvav</type>). A C
+	      representation will require just 32 bytes (8 elements of
+	      4 bytes each). Clearly for arrays of a million pixels
+	      the closer the representation is to pure C the more
+	      significant will be the saving on memory.</para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term>speed</term>
+	    <listitem>
+	      <para>So far in this section we have shown that passing
+	      arrays into an out of perl requires loops to pack and
+	      unpack the array each time. In cases where a large data
+	      array is being passed continually to and from C the time
+	      overhead in doing this will be enormous. Additionally,
+	      for N-dimensional data arrays the large number of
+	      dereferences required to return the data values will be
+	      significant.</para>
+	    </listitem>
+	  </varlistentry>
+	</variablelist>
+
+        <para>It is therefore not surprising that PDL was developed by
+        scientists<footnote><para>The primary developers of PDL were
+        Karl Glazebrook (an astronomer), Tuomas Lukka and Christian
+        Soeller<remark>Need to check what Christian and Tuomas
+        do</remark></para></footnote> as an attempt to solve these
+        problems without having to use expensive proprietary packages
+        or a language other than Perl!</para>
+
+	<para>PDL deals with the problems of dimensionality, speed and
+	compactness by using a PDL object (known as a
+	<quote>piddle</quote><footnote><para>Karl Glazebrook is
+	English!</para></footnote>) to store the data itself and
+	information such as the dimensionality and data type. In
+	reality a piddle is a C struct for efficiency and the data is
+	stored as a normal C array<footnote><para>Version 1 of PDL
+	stored the data as a packed string in an SV exactly as shown
+	<xref linkend="advxs.arrays.num.pack">. Version 2 made the
+	object more opaque.</para></footnote>. We will not
+	attempt to be a complete guide to PDL in this book but
+	more importantly for this book, we will show how to interact with
+	PDL from within XS.</para>
+
+	<sect4>
+	  <title>A primer</title>
+
+	  <para>Rather than try to cover all of PDL here is a quick
+	  introduction. PDL provides a shell for interactive use
+	  (called <command>perldl</command>) which can be very useful
+	  for general experimentation with Perl as well as for
+	  PDL. Here are some examples that will hopefully provide a
+	  taster (they can be typed in at the
+	  <command>perldl</command> shell or in a program in
+	  conjunction with <userinput>use PDL;</userinput>):</para>
+
+	  <variablelist>
+	    <varlistentry>
+	      <term>$a = pdl([0,1,2],[3,4,5]);</term>
+	      <listitem>
+		<para>Create a 3x2 piddle</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>$a = sequence(3,2);</term>
+	      <listitem>
+		<para>Create the same piddle using the
+		<function>sequence</function> command. This is
+		effectively an n-dimensional version of the
+		<function>..</function> Perl operator.</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>print $a;</term>
+	      <listitem>
+		<para>Print a stringified form of the piddle. This
+works for reasonably sized piddles. Here the output is:</para>
+		<screen>
+[
+ [0 1 2]
+ [3 4 5]
+]
+</screen>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>$a *= 2;</term>
+	      <listitem>
+		<para>Multiply each element in the piddle by
+		<literal>2</literal>. <varname>$a</varname> is now:</para>
+		<screen>
+[
+ [ 0  2  4]
+ [ 6  8 10]
+]
+</screen>
+<para>In PDL the standard operators (+,-,*,/ etc) are overloaded so
+that piddles act like normal perl variables. By default PDL does not
+do matrix operations on piddles (but it can be made to).</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>$b = $a->slice("1,");</term>
+	      <listitem>
+		<para>Extract a slice from <varname>$a</varname>. Here
+we use object notation to invoke the slice method. In this case we are
+extracting column 1:</para>
+		<screen>
+[
+ [2]
+ [8]
+]
+</screen>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>$c = pdl(10,20); $b += $c;</term>
+	      <listitem>
+		<para>Create a 2 element piddle and add it to
+		<varname>$b</varname> which becomes:</para>
+		<screen>
+[
+ [32]
+ [38]
+]
+</screen>
+		<para>More importantly, <varname>$a</varname> now
+		becomes:</para>
+		<screen>
+[
+ [ 0 32  4]
+ [ 6 38 10]
+]
+</screen>
+		<para>because <varname>$b</varname> is still related
+		to <varname>$a</varname> so that changes in one are
+		reflected in the other. This is one of the most
+		powerful features of PDL.</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+
+	  <para>PDL is a powerful tool for manipulating array data and
+	  should be considered seriously for any project that is
+	  dealing with arrays and perl.</para>
+
+
+	</sect4>
+
+	<sect4 id="advxs.xspdl">
+	  <title>PDL and XS</title>
+
+	  <para>Now that we have shown the utility of PDL when using
+	  arrays we will now show how to use PDL from XS. When viewed
+	  from Perl a PDL is seen as an object but from within C a PDL
+	  is represented as a structure (denoted by a <type>pdl
+	  *</type>). In general you should only use PDL with XS if you
+	  want direct access to the structure. PDL provides easier
+	  methods of passing data to C routines with the
+	  <classname>PDL::PP</classname> (more details of which can be
+	  found in <xref linkend="altxs.pdlpp">) and
+	  <classname>PDL::CallExt</classname> modules.</para>
+
+
+	  <para>The PDL infrastructure provides typemap entries to
+	  handle the conversion from/to the PDL structure:</para>
+
+	  <programlisting>
+pdl *                   T_PDL
+
+INPUT
+
+T_PDL
+        $var = PDL->SvPDLV($arg)
+
+OUTPUT
+
+T_PDL
+        PDL->SetSV_PDL($arg,$var);
+</programlisting>
+
+	  <para>These typemap entries use the programming interface
+	  (API) provided by the PDL core to translate perl objects to
+	  the PDL structures. This raises the issue of how to use C
+	  functions that are provided by a separate perl module in
+	  your XS code. For external C libraries you simply make sure
+	  that you link against the library when the XS module is
+	  built. The PDL shared library<footnote><para>Assuming your
+	  perl can support dynamic loading of
+	  libraries</para></footnote> is installed somewhere in the
+	  Perl site library tree in
+	  <filename>PDL/Core/Core.so</filename> (on many Unix
+	  systems). There are a number of difficulties associated with
+	  attempting to use this library directly from other XS
+	  modules:</para>
+	  <orderedlist>
+	    <listitem>
+	      <para>In order to link your PDL XS code against this
+	      library you would first need to locate it (using the
+	      <classname>Config</classname> module) and then convince
+	      MakeMaker that it should be included even though it does
+	      not look like a standard library (this can be done by
+	      fooling MakeMaker into thinking that
+	      <filename>Core.so</filename> is an object file).</para>
+	    </listitem>
+	    <listitem>
+	      <para>Each PDL-based XS module will have to jump
+	      through the same hoops.</para>
+	    </listitem>
+	  </orderedlist>
+
+	  <para>To simplify access to the PDL API, pointers to the
+	  public functions are stored in a C structure. A pointer to
+	  this structure is then stored in a Perl variable in the PDL
+	  namespace. In order to use a PDL function all that is
+	  required is to retrieve this pointer from the Perl
+	  variable. This is the approach also taken by the perl/Tk
+	  module. XS provides a means of doing this at load time using
+	  the BOOT: section and PDL recommends the following
+	  code:</para>
+
+	  <programlistingco>
+	    <areaspec>
+	      <!-- one of (AREASET AREA) -->
+	      <area coords="2" id="pdlinc">
+	      <area coords="3" id="corestruct">
+	      <area coords="4" id="coresv">
+	      <area coords="10" id="pdlshare">
+	      <area coords="11" id="pdlnull">
+	      <area coords="13" id="pdlcore">
+	    </areaspec>
+	  <programlisting>
+#include "pdl.h"
+#include "pdlcore.h"
+static Core * PDL; 
+SV* CoreSV;       
+
+MODULE = XXXX   PACKAGE = XXXX
+
+BOOT:
+   /* Get pointer to structure of core shared C routines */
+   CoreSV = perl_get_sv("PDL::SHARE",FALSE);  /* SV* value */
+   if (CoreSV==NULL)
+     Perl_croak(aTHX_ "This module requires use of PDL::Core first");
+   PDL = (Core*) (void*) SvIV( CoreSV );  /* Core* value */
+
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="pdlinc">
+		<para>Standard include files for PDL. These declare
+		the PDL constants and the function structure.</para>
+	    </callout>
+	      <callout arearefs="corestruct">
+		<para>Declare a pointer to a <type>Core</type>. A
+		<type>Core</type> is typedeffed to <type>struct
+		Core</type> in <filename>pdlcore.h</filename>. It is
+		declared static since we want to retain the value each
+		time we call a function.</para>
+	      </callout>
+	      <callout arearefs="coresv">
+		<para>A pointer to an SV. This is used to store the SV
+		retrieved from the PDL namespace.</para>
+	      </callout>
+	      <callout arearefs="pdlshare">
+		<para>Get the variable <varname>PDL::SHARE</varname></para>
+	      </callout>
+	      <callout arearefs="pdlnull">
+		<para>We must load the
+		<classname>PDL::Core</classname> module before
+		attempting to load this module else
+		<varname>PDL::SHARE</varname> will not be
+		defined. This is achieved most easily simply by making
+		sure that our perl module loads
+		<varname>PDL::Core</varname> before calling the
+		<methodname>bootstrap</methodname> method.</para>
+	      </callout>
+	      <callout arearefs="pdlcore">
+		<para>Retrieve the integer part of the SV, cast it to
+		type <type>Core*</type> and store it in a C variable
+		called <varname>PDL</varname>.</para>
+	      </callout>
+	  </calloutlist>
+</programlistingco>
+
+	  <para>Now we can see that the standard PDL typemap entries
+	  assume that we have done the above because they use the
+	  variable <varname>PDL</varname> as a pointer to a structure
+	  in order to run the conversion methods. Now we can use any
+	  public PDL function simply by using this variable. </para>
+
+	  <para>With this ground work in place we can now write a PDL
+	  version of our routine to sum the elements in an array using
+	  the <function>sum</function> function presented
+	  earlier<footnote><para>Of course we can just use the PDL
+	  <methodname>sum</methodname> method
+	  directly!</para></footnote>. Here is the XS snippet:</para>
+
+	  <programlistingco>
+	    <areaspec>
+	      <!-- one of (AREASET AREA) -->
+	      <area coords="3" id="inpdl">
+	      <area coords="5" id="convertpdl">
+	      <area coords="6" id="mainpdl">
+	    </areaspec>
+	  <programlisting>
+int
+sum_as_pdl( in )
+  pdl * in
+ CODE:
+  PDL->converttype( &amp;in, PDL_L, 1);
+  RETVAL = sum( in->nvals, (intArray *)in->data);
+ OUTPUT:
+  RETVAL
+</programlisting>
+	    <calloutlist>
+	      <callout arearefs="inpdl">
+		<para>Here we assume that we have a PDL argument. If
+		an array is passed in it will be rejected by
+		<function>SvPDLV</function>.</para>
+	      </callout>
+	      <callout arearefs="convertpdl">
+		<para>A PDL is typed (by default all PDLs are double
+		precision) and this line is responsible for converting
+		it to an integer type so that it can be summed by our
+		function. This example is slightly naughty because it
+		converts the input PDL to integer format. In a real
+		application either a copy should be made so that the
+		input piddle is not modified or a
+		<function>sum</function> should be written for each
+		data type.</para>
+	      </callout>
+	      <callout arearefs="mainpdl">
+		<para>Here we find the number of elements in the PDL
+		using the <varname>nvals</varname> part of the
+		structure and retrieve the values themselves using the
+		<varname>data</varname> part.</para>
+	      </callout>
+	    </calloutlist>
+	  </programlistingco>
+
+
+	  <para>In order to compile this XS code we need to generate a
+	  perl module wrapper that will load PDL itself and a
+	  <filename>Makefile.PL</filename> that will correctly locate
+	  the PDL include files from the installed tree. Here is a
+	  suitable <filename>pm</filename> file:</para>
+
+	  <programlisting>
+package Arrays;
+
+use PDL::Core;
+use base qw/ DynaLoader /;
+
+our $VERSION;
+
+$VERSION = '1.00';
+
+bootstrap Arrays;
+</programlisting>
+
+	  <para>and corresponding
+	  <filename>Makefile.PL</filename>:</para>
+
+	  <programlistingco>
+	    <areaspec>
+	      <!-- one of (AREASET AREA) -->
+	      <area coords="7" id="make.pdlinc">
+	      <area coords="13" id="make.prereq">
+	    </areaspec>
+	    <programlisting>
+use ExtUtils::MakeMaker;
+use File::Spec;
+use Config;
+
+my $pdlinc = '-I'.
+             File::Spec->catdir($Config{'installsitearch'},
+                                "PDL", "Core");
+
+# Write the makefile
+WriteMakefile(
+              'NAME'=> 'Arrays',
+              'VERSION_FROM' => 'Arrays.pm', # finds $VERSION
+              'PREREQ_PM' => { 'PDL' => '2.0'},
+              'INC'       => $pdlinc,
+             );
+
+</programlisting>
+	    <calloutlist>
+	      <callout arearefs="make.pdlinc">
+		<para>The PDL-specific include files
+		(<filename>pdl.h</filename> and
+		<filename>pdlcore.h</filename>) are installed as part
+		of PDL into the perl
+		<filename>installsitearch</filename> directory. This
+		line uses the <classname>Config</classname> module to
+		determine that location and
+		<classname>File::Spec</classname> to append the PDL
+		directory to that location.</para>
+	      </callout>
+	      <callout arearefs="make.prereq">
+		<para>The PDL internals were completely rewritten for
+		version 2.0. This line instructs MakeMaker to check
+		the version of the installed PDL and to complain if
+		the version number is less than 2.0.</para>
+	      </callout>
+	    </calloutlist>
+	  </programlistingco>
+
+	</sect4>
+
+    </sect3>
+
+      <sect3>
+	<title>Benchmarks</title>
+
+	<para>So far we have shown 4 ways of passing numeric data into
+	C for processing and the associated ways of returning arrays
+	back to Perl. These methods can be summarised as:</para>
+
+	<orderedlist>
+	  <listitem>
+	    <para>Using a list.</para>
+	  </listitem>
+	  <listitem>
+	    <para>Using a reference to an array.</para>
+	  </listitem>
+	  <listitem>
+	    <para>Using a packed string.</para>
+	  </listitem>
+	  <listitem>
+	    <para>Using a PDL object.</para>
+	  </listitem>
+	</orderedlist>
+
+	<para>To finish off this section on arrays we will now write a
+	simple benchmark to compare the efficiency of these techniques
+	using the summing code described earlier with the exception
+	that we will use the native PDL <function>sum</function>
+	function.</para>
+
+	<programlisting>
+use Benchmark;
+use Arrays;
+use PDL;
+use strict;
+
+my @array = (0..100);
+my $pdl  = sequence(long,101);
+
+timethese(-3, {
+	       'PDL' => sub { sum($pdl); },
+	       'List'=> sub { Arrays::sum_as_list(@array) },
+	       'Ref' => sub { Arrays::sum_as_ref(\@array) },
+	       'Pack'=> sub { Arrays::sum_as_packed( pack("i*", @array) ); },
+	      })
+</programlisting>
+
+	<para>The above benchmark runs for at least 3 seconds and gives the following
+	output:</para>
+
+	<screen>
+Benchmark: running List, PDL, Pack, Ref, each for at least 3 CPU seconds...
+      List:  3 wallclock secs ( 3.28 usr +  0.00 sys =  3.28 CPU) @ 110633.84/s (n=362879)
+       Ref:  2 wallclock secs ( 3.01 usr +  0.00 sys =  3.01 CPU) @ 77112.62/s (n=232109)
+      Pack:  4 wallclock secs ( 3.34 usr +  0.00 sys =  3.34 CPU) @ 52336.53/s (n=174804)
+       PDL:  4 wallclock secs ( 3.08 usr +  0.00 sys =  3.08 CPU) @ 10284.09/s (n=31675)
+</screen>
+
+	<para>Since we are asking <classname>Benchmark</classname> to
+	run for a specific amount of time the important numbers are in
+	the last but one column; the number of times the subroutine
+	was executed per second. This column indicates that for a
+	small array (in this case 101 elements) a list is ten times
+	faster than a PDL, twice as fast as using pack and one and a
+	half times faster than using a reference. The PDL solution is
+	surprisingly slow in this case but this is in part due to the
+	additional overhead that is present in the PDL system but
+	which is not being used by our example. The packed string is
+	expected to be slow since it calls an additional Perl function
+	each time. The reference is slower than list due to the
+	overhead of taking the reference. If we now increase the size
+	of the array by two orders of magnitude to 10000 elements we
+	get a different result:</para>
+
+	<screen>
+Benchmark: running List, PDL, Pack, Ref, each for at least 3 CPU seconds...
+      List:  3 wallclock secs ( 3.20 usr +  0.02 sys =  3.22 CPU) @ 1495.65/s (n=4816)
+       PDL:  4 wallclock secs ( 3.20 usr +  0.00 sys =  3.20 CPU) @ 4372.81/s (n=13993)
+      Pack:  3 wallclock secs ( 3.14 usr +  0.00 sys =  3.14 CPU) @ 448.09/s (n=1407)
+       Ref:  3 wallclock secs ( 3.08 usr +  0.00 sys =  3.08 CPU) @ 917.21/s (n=2825)
+</screen>
+
+	<para>Now PDL is much faster than the rest so that the
+	overhead due to the PDL infrastructure is now becoming
+	insignificant when compared to the cost of converting large
+	arrays into C data structures.</para>
+
+<!--
+	<remark>!!!! Need to investigate more why Ref is so
+	slow. Running a Perl equivalent shows that ref is 1000 times
+	faster than list. XS is really slowing things down. In XS list
+	is 1.5 times faster than ref. It is common knowledge that refs
+	are faster than lists and it is true for perl but not for the
+	above XS !!!!</remark>
+-->
+
+	<para>Of course, specific benchmarks can not tell the whole
+	story and the final choice you make depends on many different
+	factors. For example, if you require multiple array arguments
+	then you can not use a simple list; if you want maximal
+	distribution you may not want to insist on the user installing
+	PDL.</para>
+
+      </sect3>
+
+    </sect2>
+
+
+
+    <sect2 id="advxs.char.strings">
+      <title>Character strings</title>
+
+      <para>We saw in <xref linkend="cadv.stringarr"> that an array of
+      strings is represented in C as an array of pointers that point
+      to the memory location of the start of each string; a string is
+      an array of characters and a string array is an array of
+      pointers. In general for XS the <type>char**</type> can be
+      created and populated just as for any other array although care
+      must be taken if the new array is to persist after the call to
+      the XS function. This is because in the simple case, you simply
+      copy the pointers from the SV's and use them but if you return
+      to Perl you can not guarantee that the SV will still be around
+      at a later date. In that case you will have to take copies of
+      the entire string rather than just storing the pointer.</para>
+
+      <para>Converting a <type>char**</type> to a Perl
+      array is simply a case of stepping through the C array and
+      copying the contents to the Perl array.</para>
+
+      <para>The following XS code demonstrates both techniques by
+      copying an input array to a <type>char**</type> and then copying
+      that back onto the output stack. Variants involving output
+      references or input lists will be very similar and this example
+      does not have complete error checking.</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="3" id="inavref">
+	  <area coords="12" id="mortalspace">
+	  <area coords="17" id="svpv">
+	  <area coords="22" id="newsvpv">
+	</areaspec>
+	<programlisting>
+void
+copy_char_arr( avref )
+   AV * avref;
+  PREINIT:
+   char ** array;
+   int len;
+   SV ** elem;
+   int i;
+  PPCODE:
+   len = av_len( avref ) + 1;
+   /* First allocate some memory for the pointers */
+   array = (char**) get_mortalspace( sizeof(void *) * len );   
+
+   /* Loop over each element copying pointers to the new array */
+   for (i=0; i&lt;len; i++) {
+     elem = av_fetch( avref, i, 0);
+     array[i] = SvPV( *elem, PL_na );
+   }
+
+   /* Now copy it back onto the stack */
+   for (i=0; i&lt;len; i++) { 
+     XPUSHs( sv_2mortal( newSVpv( array[i], 0)));
+   }
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="inavref">
+	    <para>In this example the input is expected to be a
+reference to an array and the output is a list:</para>
+	    <funcsynopsis>
+	      <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	      <funcprototype>
+		<funcdef>@copy = <function>copy_char_arr</function></funcdef>
+		<!-- one of (PARAMDEF VARARGS VOID) -->
+		<paramdef>\@src</paramdef>
+	      </funcprototype>
+	    </funcsynopsis>
+	  </callout>
+	  <callout arearefs="mortalspace">
+	    <para>Get some temporary storage to hold the array of
+	    pointers. The <function>get_mortalspace</function> is
+	    identical to the <function>intArrayPtr</function> function
+	    shown earlier except that it takes the number of bytes as
+	    argument rather than the number of integers.</para>
+	  </callout>
+	  <callout arearefs="svpv">
+	    <para>Retrieve the pointer from the SV (converting it to a
+	    PV if required) and then store it in the array. If it was
+	    necessary to copy the string first we would also need to
+	    allocate some memory for it here.</para>
+	  </callout>
+	  <callout arearefs="newsvpv">
+	    <para>Copy each string from the string array back into a
+	    new SV and push it onto the argument stack.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+    </sect2>
+
+
+</sect1>
+
+<sect1 id="advxs.cb">
+<title>Callbacks</title>
+
+<para>
+A <firstterm>callback</firstterm> is the name given to a user supplied
+function that is called by another function. The classic example of
+callbacks in perl is the <classname>Tk</classname> module. Whenever a
+Tk event occurs (for example, a button is pushed on the GUI) Tk sees
+whether a perl subroutine should be called to process the event. The
+following code shows how a Tk callback can be set up:
+</para>
+
+    <example id="advxs.tkeg">
+      <title>A simple <classname>Tk</classname> callback</title>
+
+<programlisting>
+use Tk;
+use strict;
+
+my $MW = new MainWindow;
+my $button = $MW->Button( -text => "Exit",
+                          -command => sub { exit; } );
+$button->pack();
+MainLoop;
+</programlisting>
+</example>
+<para>
+If this program is run it will put up a window containing a single
+button. If the button is pressed the callback associated with the
+button (configured using the <option>-command</option> option) will be
+executed and the program will therefore exit. The callback is not
+called directly by user code, it is called from the event loop from C
+code.
+</para>
+
+<para>
+The main difficulty handling callbacks in XS is that perl stores
+subroutines in a <type>CV</type> whereas C callbacks are implemented
+as pointers to a C function. In order for C to call a perl subroutine
+an intermediate function has to be inserted that knows about Perl.
+This indirection leads to all the complications associated with using
+callbacks from perl.
+</para>
+
+<para>
+In general there are usually three types of callbacks that must be handled:
+</para>
+    <itemizedlist>
+      <listitem>
+	<para>A callback that is used for a single command with return
+	passing back to perl once the callback has been used. This is
+	common in the POSIX <function>qsort</function> function and
+	the unix search functions (e.g. <function>bsearch</function>).</para>
+      </listitem>
+      <listitem>
+	<para>A single callback that is registered at one point in
+	the program and then executed some time later (for example an
+	error handler)</para>
+      </listitem>
+      <listitem>
+	<para>Multiple subroutines registered as callbacks that can be
+	called at any time (event driven programs are examples of
+	this)</para>
+      </listitem>
+    </itemizedlist>
+
+<para>We will cover each of these types in turn.</para>
+
+<sect2 id="advxs.cb.imm">
+<title>Immediate Callbacks</title>
+
+<para>The simplest type of callback is one where the C function
+executes given the supplied callback and then completes before
+returning back from XS. The C <function>qsort</function> function
+provides an excellent example of this. This function can be used to 
+sort arrays and used to be what Perl used to implement the
+Perl <function>sort</function> routine. The calling signature is:
+</para>
+        <funcsynopsis>
+	  <funcprototype>
+	    <funcdef>void <function>qsort</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) -->
+	    <paramdef>void *<parameter>base</parameter></paramdef>
+	    <paramdef>size_t <parameter>nel</parameter></paramdef>
+	    <paramdef>size_t <parameter>width</parameter></paramdef>
+	    <paramdef>void *<parameter>compar</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+<para>where <parameter>base</parameter> is a pointer to the start of
+the array, <parameter>nel</parameter> is the number of elements in the
+array, <parameter>width</parameter> is the number of bytes used to
+represent each element and <parameter>compar</parameter> is a pointer
+to a function that is used to compare individual elements of the array.
+It is the <parameter>compar</parameter> function that holds the C callback.
+Obviously the Perl interface to this function should behave like the
+standard <function>sort</function> function, that is:
+</para>
+<programlisting>
+@sorted = qsorti \&amp;compar, @unsorted;
+</programlisting>
+<para>
+We are calling the function <function>qsorti</function> to indicate
+that this sort function can only be used to sort arrays of
+integers. This simplifies the example code and allows us to focus on
+the implementation of the callback rather than the complication of
+handling all data types.  For this examplee we are going to use a
+module called <classname>CallBack</classname>. The following XS code
+implements the <function>qsorti</function> function:
+</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="5" id="tdef.intarr">
+	  <area coords="9" id="stat.qsortsv">
+	  <area coords="13" id="intarrayptr">
+	  <area coords="20" id="qsorti.cb">
+	  <area coords="22" id="vardecl">
+	  <area coords="26" id="enter">
+	  <area coords="31" id="xpush">
+	  <area coords="34" id="putback">
+	  <area coords="36" id="callsv">
+	  <area coords="38" id="spagain">
+	  <area coords="40" id="croak">
+	  <area coords="43" id="answer">
+	  <area coords="45" id="leave">
+	  <area coords="48" id="retans">
+	  <area coords="51" id="module">
+	  <area coords="54" id="qsorti">
+	  <area coords="55" id="svarg">
+	  <area coords="59" id="proto">
+	  <area coords="61" id="store">
+	  <area coords="62" id="qsort">
+	  <area coords="65" id="unpack">
+	</areaspec>
+	<programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+typedef int intArray;
+
+
+/* Static memory for qsort callback */
+static SV * qsortsv;
+
+/* Routine to allocate memory for integer array */
+/* Allocate the memory as a mortal SV so that it is freed automatically */
+intArray * intArrayPtr ( int num ) {
+  SV * mortal;
+  mortal = sv_2mortal( NEWSV(0, num * sizeof(intArray) ) );
+  return (intArray *)SvPVX(mortal);
+}
+
+/* The callback for qsort */
+int qsorti_cb( const void *a, const void *b) {
+
+  dSP;
+  int count;
+  int answer;
+
+  ENTER;
+  SAVETMPS;
+  PUSHMARK(SP);
+
+  /* Push some SVs onto the stack with the values of a and b */
+  XPUSHs(sv_2mortal(newSViv(*(int *)a)));
+  XPUSHs(sv_2mortal(newSViv(*(int *)b)));
+
+  PUTBACK;
+
+  count = call_sv(qsortsv, G_SCALAR );
+
+  SPAGAIN;
+
+  if (count != 1)
+      croak("User defined qsort callback returned more than 1 value\n");
+
+  answer = POPi;
+
+  FREETMPS;
+  LEAVE;
+
+  return answer;
+}
+
+MODULE = CallBack		PACKAGE = CallBack		
+
+void
+qsorti(cb, array, ...)
+  SV * cb
+  intArray * array
+ PREINIT:
+  U32 i;
+ PROTOTYPE: &@
+ PPCODE:
+  qsortsv = cb;
+  qsort( array, ix_array, sizeof(int), qsorti_cb);
+
+  /* now need to push the elements back onto the stack */
+  for ( i =0; i < ix_array; i++) {
+    XPUSHs(sv_2mortal(newSViv(array[i])));
+  }
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="tdef.intarr">
+	    <para>We create a new type based on <type>int</type> so
+that we can associate it with the T_ARRAY typemap.</para>
+	  </callout>
+	  <callout arearefs="stat.qsortsv">
+	    <para>This is some static memory that is used to store the
+code reference. This is required because our C callback has to have
+access to the Perl code reference.</para>
+	  </callout>
+	  <callout arearefs="intarrayptr">
+	    <para>This is called automatically as part of the T_ARRAY
+typemap entry. It is used to dynamically allocate memory for the C
+integer array. It uses a mortal SV to allocate the memory rather than
+the <function>New</function> macro. Doing this allows us to not worry
+about freeing the memory since Perl will do it automatically when the
+XS function returns.</para>
+	  </callout>
+	  <callout arearefs="qsorti.cb">
+	    <para>The C function that is called by
+	    <function>qsort</function></para>
+	  </callout>
+	  <callout arearefs="vardecl">
+	    <para>Declare variables that we
+need. <function>dSP</function> is just a macro that gives us access to
+Perl's argument stack.</para>
+	  </callout>
+	  <callout arearefs="enter">
+	    <para><function>ENTER</function>,
+	    <function>SAVETMPS</function> and
+	    <function>PUSHMARK</function> are always used on entry to
+	    a callback to allow perl to store the current status of
+	    the stack. These are paired with
+	    <function>PUTBACK</function>,
+	    <function>FREETMPS</function> and
+	    <function>LEAVE</function></para>
+	  </callout>
+	  <callout arearefs="xpush">
+	    <para>Push the arguments supplied by
+<function>qsort</function> on to the stack so that our perl
+callback can access them.</para>
+	  </callout>
+	  <callout arearefs="putback">
+	    <para>This indicates that we have finished configuring the
+	    stack for our Perl function. It forms the end bracket for
+	    the <function>PUSHMARK</function></para>
+	  </callout>
+	  <callout arearefs="callsv">
+	    <para>This calls the perl code block contained in
+<varname>qsortsv</varname> and returns the number of arguments that
+were placed onto the stack by the subroutine. The G_SCALAR flag
+indicates that we are calling the code block in a scalar context.</para>
+	  </callout>
+	  <callout arearefs="spagain">
+	    <para>Since the stack no longer reflects the state it was
+in on entry (because the perl subroutine we just called has messed
+with it) we use <function>SPAGAIN</function> to reset it.</para>
+	  </callout>
+	  <callout arearefs="croak">
+	    <para>In the unlikely event that more than one argument
+was returned from the perl subroutine we shut down the program. This
+should not happen because we forced scalar context.</para>
+	  </callout>
+	  <callout arearefs="answer">
+	    <para>Read the answer (as an integer) off the stack.</para>
+	  </callout>
+	  <callout arearefs="leave">
+	    <para>Free any temporary SVs that were created (for
+	    example the two that we pushed onto the stack) and leave
+	    the current context.</para>
+	  </callout>
+	  <callout arearefs="retans">
+	    <para>Return the answer to <function>qsort</function></para>
+	  </callout>
+	  <callout arearefs="module">
+	    <para>Begin the XS code.</para>
+	  </callout>
+	  <callout arearefs="qsorti">
+	    <para>Our XS function is called
+	    <function>qsorti</function> and it takes a code reference
+	    and variable length list as arguments. The list will be
+	    processed using the T_ARRAY typemap entry.</para>
+	  </callout>
+	  <callout arearefs="svarg">
+	    <para>We use a simple SV as argument since the
+	    <function>call_sv</function> function can automatically
+	    deal with an SV containing a reference to a CV.</para>
+	  </callout>
+	  <callout arearefs="proto">
+	    <para>Specify a prototype for the XS function. This
+	    prototype matches that of the Perl
+	    <function>sort</function> function.</para>
+	  </callout>
+	  <callout arearefs="store">
+	    <para>Here we store the code reference in a static
+	    variable for later retrieval by our C callback.</para>
+	  </callout>
+	  <callout arearefs="qsort">
+	    <para>Run the normal C <function>qsort</function> function
+	    using our array and the C callback that we defined at the
+	    top of the file. The <varname>ix_array</varname> variable
+	    is defined and set by the T_ARRAY typemap.</para>
+	  </callout>
+	  <callout arearefs="unpack">
+	    <para>Finally we unpack the integer array and push it onto
+	    the return argument stack.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+<para>
+We also need a private <filename>typemap</filename> to indicate that 
+an <type>intArray *</type> should be processed using the T_ARRAY
+typemap entry:
+</para>
+<programlisting>
+intArray *	T_ARRAY
+</programlisting>
+
+<para>
+Once this module is compiled you will be able to do the
+following:</para>
+
+<programlisting>
+use strict;
+use CallBack;
+
+my @unsorted = (20,4,6,5,10,1);
+
+my @sorted =  CallBack::qsorti { $_[0] <=> $_[1] } @unsorted;
+print join("-",@sorted);
+</programlisting>
+
+<para>The only differences between this and the normal
+<function>sort</function> function are that it only sorts integer
+arrays and there is no special use of <varname>$a</varname> and
+<varname>$b</varname>. This means that <varname>@_</varname> must be
+used to obtain the sort arguments.</para>
+
+<para>
+To summarize, we had to do the following to use the callback:
+</para>
+      <orderedlist>
+	<listitem>
+	  <para>Write a C function that can be used as the callback
+	  and then use this function to configure the stack and call
+	  the perl subroutine.</para>
+	</listitem>
+	<listitem>
+	  <para>Store the code reference (as an <type>SV*</type>) in
+	  some static memory for later retrieval.</para>
+	</listitem>
+	<listitem>
+	  <para>Call the C function (in this case
+	  <function>qsort</function>) using our intermediary C
+	  function as the callback.</para>
+	</listitem>
+      </orderedlist>
+
+</sect2>
+
+    <sect2 id="advxs.cb.def">
+      <title>Deferred Callbacks</title>
+
+      <para>A deferred callback is one where the callback is registered
+      with one command but called from another later in the program. A
+      common example of this is an error handler. The error handler is
+      registered early on in the program but it is only called when an
+      error occurs. </para>
+
+      <para>To demonstrate this usage we will use our existing <function>qsort</function> example but change the Perl calling interface to:
+      </para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void <function>register_qsort_cb</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef><parameter>\&amp;callback</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>@sorted = <function>qsorti_cb</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef><parameter>@unsorted</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+<para>The obvious implementation of this is to simply split the existing XSUB entry into two parts:
+</para>
+
+	<programlisting>
+void
+register_qsort_cb( cb )
+  SV * cb
+ CODE:
+  qsortsv = (SV *) cb;
+
+void
+qsorti_cb(array, ...)
+  intArray * array
+ PREINIT:
+  U32 i;
+ PPCODE:
+  qsort( array, ix_array, sizeof(int), qsorti_cb);
+
+  /* now need to push the elements back onto the stack */
+  for ( i =0; i < ix_array; i++) {
+    XPUSHs(sv_2mortal(newSViv(array[i])));
+  }
+</programlisting>
+
+<para>The correspondingly modified test program would be:
+</para>
+
+<programlisting>
+use strict;
+use CallBack;
+
+CallBack::register_qsort_cb( sub {$_[0] <=> $_[1] } );
+my @unsorted = (20,4,6,5,10,1);
+my @sorted = CallBack::qsorti_cb( @unsorted );
+print join("-",@sorted);
+</programlisting>
+
+<para>If we run this we get the following:</para>
+      <screen>
+Undefined subroutine &amp;main::20 called at ./cbtest line 6 
+</screen>
+<para>(or something similar depending on your system). What is
+happening here? The problem is that the SV stored in
+<varname>qsortsv</varname> has been reallocated by perl between
+registering it and using it. Specifically in this case the SV now
+seems to be holding the first element of the new array. Since we are
+only storing a pointer to an SV that is meant to contain a reference
+to a subroutine (or a name of a sub) we are sensitive to the SV
+changing.  To overcome this problem we can either copy the contents of
+the SV to a new SV when storing the callback or extract the CV that is
+referenced by the SV and store a pointer to that instead. Changing
+<function>register_qsort_cb</function> to:
+</para>
+
+      <programlisting>
+void
+register_qsort_cb( cb )
+  CV * cb
+ CODE:
+  qsortsv = (SV *) cb;
+</programlisting>
+
+<para>fixes the problem since the <type>CV *</type> typemap entry
+retrieves the reference from the SV. One issue is that this will only
+work with code references (rather than sub names) but usually that is
+not a problem. A bigger problem is that technically the reference
+count on the CV should be incremented when it is stored to indicate to
+Perl that another part of the system is interested in the CV. This
+also means that the reference count should be decremented on the old
+CV whenever a new callback is registered. For simple systems this is
+usually not worth bothering with (in most cases you can be assured
+that some other part of the system will be keeping the CV alive!) but
+the better solution is to simply copy the SV on entry:
+</para>
+
+      <programlisting>
+void
+register_qsort_cb( cb )
+  SV * cb
+ CODE:
+  if (qsortsv == (SV*)NULL) {
+      /* This is first time in so create an SV */
+      qsortsv = newSVsv(cb) ;
+  } else {
+      /* overwrite since we have already stored something */
+      SvSetSV(qsortsv, cb) ;
+  }
+</programlisting>
+
+<para>since the <function>SvSetSV</function> function
+(<function>newSVsv</function> also calls it) automatically takes care
+of reference counting. This method relies on knowing whether the
+function has been called before so to guarantee this the declaration
+of <varname>qsortsv</varname> must be modified slightly to be more
+explicit:
+</para>
+
+<programlisting>
+static SV * qsortsv = (SV*)NULL;
+</programlisting>
+
+
+    </sect2>
+
+    <sect2 id="advxs.cb.mult">
+      <title>Multiple Callbacks</title>
+
+<para>So far we have only registered a single callback at any one time
+and that callback has been stored in a static variable. In more
+complex situations, such as event driven programs, we would like to
+store many callbacks so a different scheme must be used; currently
+each time a callback is registered the previous callback is lost.
+There are a number of approaches to this and the choice depends mainly
+on how the underlying library is implemented.
+</para>
+
+      <orderedlist>
+	<listitem>
+	  <para>If the calling interface provides a means for storing
+	  extra information along with the C callback (for example a C
+	  struct is used that can contain a pointer to user-supplied
+	  data) then store a copy of the SV in there and retrieve it
+	  when the callback occurs. This is the
+	  approach taken by the <classname>Tk</classname>
+	  module.</para>
+	</listitem>
+	<listitem>
+	  <para>If there is no provision for user-data but the
+	  callback is associated with a specific data structure (such
+	  as a filehandle) then one option is to store the perl
+	  callback in a static hash associated with the data structure
+	  and then retrieve the relevant SV from the hash as
+	  required.</para>
+	</listitem>
+	<listitem>
+	  <para>If the callback is passed arguments that do not
+	  identify the source (such as a text string from a file) then
+	  the only option is to write a number of callback functions
+	  in C and associate each one of them with a specific Perl
+	  callback. The disadvantage of this approach is that the
+	  number of callbacks is then limited to a fixed
+	  number. <remark>This really does need an example but
+	  perlcall already covers this quite well</remark></para>
+	</listitem>
+      </orderedlist>
+
+<para>The <classname>Tk</classname> module is an interesting example
+because it allows you to provide many more ways of specifying a
+callback than simply providing a code reference or subroutine
+name. Some examples are:
+</para>
+
+      <variablelist>
+	<varlistentry>
+	  <term>sub { }</term>
+	  <term>\&amp;somesub</term>
+	  <listitem>
+	    <para>A standard subroutine reference. This is used in
+<xref linkend="advxs.tkeg"></para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>[ \&amp;somesub, $arg1, $arg2 ]</term>
+	  <listitem>
+	    <para>Invoke a subroutine with arguments. The arguments
+	    are grouped in an anonymous array.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>[ "method", $object ]</term>
+	  <listitem>
+	    <para>Invoke a method on an object. The arguments are
+	    grouped in an anonymous array.</para>
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+
+<para>The module achieves this flexibility by, in effect, storing the
+callback information in an object (in class
+<classname>Tk::Callback</classname>) and then invoking the
+<methodname>Call</methodname> method to run the callback
+itself.<footnote><para>The <methodname>Call</methodname> method in
+<classname>Tk::Callback</classname> is the perl interface to this but
+the methods are coded in C for efficiency. See the file
+<filename>Event/pTkCallback.c</filename> in the
+<classname>Tk</classname> source distribution for
+details.</para></footnote> If necessary, this approach can be used to
+simplify the C part of the callback code since the callback object can
+be created in perl (to contain whatever you want it to), and then
+passed to C and the C callback code can simply invoke the perl
+<methodname>Call</methodname> method on the object.
+</para>
+
+    </sect2>
+
+
+</sect1>
+
+<sect1 id="advxs.other">
+<title>Other Languages</title>
+
+    <para>So far we have focussed on how to pass information between
+    perl and C. This is because Perl itself is written in C and there
+    are large numbers of libraries written in C. Since Perl is written
+    in C it can therefore communicate with other languages that can be
+    accessed from C. This section describes how to link Perl to two
+    other languages. The first is C++ and the second is Fortran. If
+    you have no interest in these languages feel free to skip this
+    section and rejoin us at <xref linkend="advxs.design">.</para>
+
+<sect2 id="advxs.cxx">
+<title>C++</title>
+
+<para>C++ is an evolution of C (the name indicates that this language
+is a developed C language) with the addition of a true object-oriented
+framework. In general C++ compilers can compile C code as well as C++
+code and when the OO framework is stripped away the core language is
+clearly based upon C.</para>
+
+<para>In order to provide interfaces to C++ libraries you can use XS
+as before but this time in a C++ style. Since C compilers do not
+understand C++ and will not include the correct C++ infrastructure
+libraries we can no longer use the C compiler that was used to
+build perl. The first step in building a C++ interface is therefore to
+fix up the <filename>Makefile.PL</filename> file so that it uses your
+C++ compiler. This can be done simply by using the
+<literal>CC</literal> key to
+<function>WriteMakefile</function>:</para>
+
+<programlisting>
+use ExtUtils::MakeMaker;
+
+WriteMakefile(
+       NAME => 'CXXTest',
+       VERSION_FROM => 'CXXTest',
+       LD   => 'g++',
+       CC   => 'g++',
+);
+</programlisting>
+
+<para>The above program can be used to configure a module called
+<classname>CXXTest</classname> (we use <literal>CXX</literal> because
+we can't include ++ in a module name. A common alternative is to use
+<literal>CPP</literal>) and we replace the linker and the compiler
+command with <command>g++</command>. For compatibility with other
+operating systems you can either guess the compiler name at this stage
+(e.g. <command>CC</command> on Solaris; the approach we take later on
+with Fortran) or simply ask for it from the command line.</para>
+
+<remark>This section will probably cover a made-up simple class. I've
+recently been providing a perl interface to a C++ library covering a
+lot of the issues but that might be too specific. The biggest problem
+with C++ is that there can be multiple methods of the same name with
+differing calling signature so the XS code can be complicated trying
+to guess which c++ method to use. Also there is simply no
+documentation on how to use perl and C++ - have you read the section
+in perlxs?? It makes so many assumptions of knowledge.</remark>
+
+<remark>The real question is how much to talk about C++ itself? We
+spend two chapters describing C and here we are going on to
+object-oriented C in a couple of lines. Need to add the extern {} block
+around the C include files, need to mention that xsubpp automatically
+provides access to a THIS if it can guess one and guesses object
+constructors from the XS name. I think it is worth addign some of this
+but we have to be careful not to get bogged down in C++ specifics when
+we should be making the reader aware of C++ generalities.</remark>
+
+
+</sect2>
+
+<sect2 id="advxs.fortran">
+<title>Fortran</title>
+
+<para>Although Fortran has been around since the 60's with its
+popularity fading there are enormous numbers of scientific libraries
+available in this language and you might want to use them from Perl.
+Most Fortran implementations allow for the object code and libraries
+to be included in C programs but the following issues must be dealt
+with when doing so:
+</para>
+
+      <variablelist>
+	<varlistentry>
+	  <term>Pass by reference</term>
+	  <listitem>
+	    <para>All arguments are passed to Fortran subroutines as
+	    pointers and it is not possible to pass by
+	    value<footnote><para>Modern Fortran implementations
+	    provide the <function>%VAL</function> function to allow
+	    pointers to be passed by value from
+	    integers.</para></footnote></para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Types</term>
+	  <listitem>
+	    <para>The variable types in Fortran are similar (there are
+	    integers, floating point numbers and strings) but you must
+	    be aware of the differences in representation. For
+	    example, it is possible that the number of bytes used to
+	    represent an <type>INTEGER</type> in Fortran is different
+	    to the default <type>int</type> in C. Usually this is not
+	    an issue.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Strings</term>
+	  <listitem>
+	    <para>Fortran requires that the lengths of all strings are
+	    specified. Rather than using a null as a string terminator
+	    the compiler automatically passes a length argument to
+	    subroutines in addition to the pointer to the string
+	    itself. When passing strings between C and fortran
+	    additional arguments are required since the C compiler
+	    will not add them automatically. The position of these
+	    arguments depends on the compiler, the most popular
+	    approach in Unix systems is to simply add all the lengths
+	    in order to the end of the calling list (the approach
+	    taken with <command>g77</command>, Sun Fortran and Digital
+	    Unix Fortran) but it is also possible that the lengths
+	    might be added into the argument list immediately
+	    following the string in question (e.g. with Microsoft
+	    Visual C++ and Fortran). When sending a C string to a
+	    Fortran subroutine the string should be padded with blanks
+	    (if it is bigger than the current contents) and when
+	    returning a string from fortran the null should be
+	    added.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Packing order</term>
+	  <listitem>
+	    <para>Perhaps the largest difference between C and Fortran
+	    is the order with which multi-dimensional arrays are
+	    stored in memory. Fortran arranges arrays in column-major
+	    order (the column index is incremented before the row
+	    index in memory) whereas C arranges arrays in row-major
+	    order (the row index is incremented before the column
+	    index). <xref linkend="advxs.fig.cnf"> shows this
+	    difference when using a 3 by 2 array containing the
+	    numbers 1 through 6. The top diagram shows the order of
+	    the elements in memory, the middle diagram shows how C
+	    would arrange these elements and the lower shows how
+	    Fortran would arrange them. This means that element [1][1]
+	    in C will not be the same as element (2,2) in Fortran
+	    (additionally, C starts counting at zero whereas Fortran
+	    starts counting from 1). If you wish to pass a
+	    multi-dimensional array between C and Fortran it will have
+	    to be translated into the correct order.</para>
+
+	    <example id="advxs.fig.cnf">
+	      <title>Array packing in C and Fortran</title>
+	      <mediaobject>
+		<imageobject>
+		  <imagedata fileref="cnf.eps" format="eps">
+		</imageobject>
+		<imageobject>
+		  <imagedata fileref="cnf.gif" format="gif">
+		</imageobject>
+		<caption>
+		  <para>Comparison of row-major and column-major
+		  organisation of arrays</para>
+		</caption>
+		</mediaobject>
+	    </example>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>String arrays</term>
+	  <listitem>
+	    <para>Since strings in Fortran are of a specified length,
+	    arrays of strings in Fortran are simply contiguous blocks
+	    of memory rather than arrays of pointers. For strings of
+	    length 20, this is simply equivalent to the perl code
+	    <userinput>$packed = pack("a20",@array);</userinput>. This
+	    makes it very easy to pass string arrays from Perl to
+	    Fortran.</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Linker names </term>
+	  <listitem>
+	    <para>Some compilers (especially on Unix) append an
+	    underscore (<literal>_</literal>) to the end of the
+	    subroutine name when the object code is generated. For
+	    example, a Fortran subroutine called
+	    <function>MYSUB</function> would be stored in the object
+	    file as <function>mysub_</function>. You need to know
+	    whether this happens on your platform. If you don't know,
+	    the easiest approach is to compile a Fortran program and
+	    examine the symbols<footnote><para>Use the <command>nm</command>
+	    command on unix systems.</para></footnote></para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term>Linking</term>
+	  <listitem>
+	    <para>When it comes to linking a Fortran library with a C
+	    main it will also be necessary to link with the Fortran
+	    runtime library. This library is included automatically
+	    when a fortran compiler is used for the link but must be
+	    specified explicitly when linking from a C
+	    compiler. </para>
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+
+      <para>Now that we have described the issues involved in calling
+      Fortran subroutine libraries from C we will now provide a quick
+      example, no arrays, of how to do this from XS by providing some
+      glue to talk to the PGPLOT Fortran library<footnote><para>The
+      PGPLOT library is available from <ulink
+      url="http://www.astro.caltech.edu/~tjp/pgplot/">Caltech</ulink>
+      and can be used for generating scientific plots. The
+      <classname>PGPLOT</classname> Perl module by Karl Glazebrook,
+      using the C binding to this library, is available from <ulink
+      url="http://www.cpan.org">CPAN</ulink></para></footnote>. We
+      will use the following simple subroutines from this library:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef><function>PGEND</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+        <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+        <funcprototype>
+          <funcdef><function>PGSCR</function></funcdef>
+          <!-- one of (PARAMDEF VARARGS VOID) -->
+          <paramdef>INTEGER <parameter>CI</parameter></paramdef>
+          <paramdef>REAL <parameter>CR</parameter></paramdef>
+          <paramdef>REAL <parameter>CG</parameter></paramdef>
+          <paramdef>REAL <parameter>CB</parameter></paramdef>
+        </funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>INTEGER <function>PGBEG</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>INTEGER <parameter>UNIT</parameter></paramdef>
+	  <paramdef>CHARACTER*(*) <parameter>FILE</parameter></paramdef>
+	  <paramdef>INTEGER <parameter>NXSUB</parameter></paramdef>
+	  <paramdef>INTEGER <parameter>NYSUB</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef><function>PGQINF</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>CHARACTER*(*) <parameter>ITEM</parameter></paramdef>
+	  <paramdef>CHARACTER*(*) <parameter>VALUE</parameter></paramdef>
+	  <paramdef>INTEGER <parameter>LENGTH</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+
+<para>which on linux with <command>g77</command> have the following
+signature in C:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void <function>pgend_</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+        <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+        <funcprototype>
+          <funcdef>void <function>pgscr_</function></funcdef>
+          <!-- one of (PARAMDEF VARARGS VOID) -->
+          <paramdef>int *<parameter>ci</parameter></paramdef>
+          <paramdef>float *<parameter>cr</parameter></paramdef>
+          <paramdef>float *<parameter>cg</parameter></paramdef>
+          <paramdef>float *<parameter>cb</parameter></paramdef>
+        </funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>int <function>pgbeg_</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>int *<parameter>unit</parameter></paramdef>
+	  <paramdef>char *<parameter>file</parameter></paramdef>
+	  <paramdef>int *<parameter>nxsub</parameter></paramdef>
+	  <paramdef>int *<parameter>nysub</parameter></paramdef>
+	  <paramdef>int <parameter>len_file</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void <function>pgqinf_</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>char *<parameter>item</parameter></paramdef>
+	  <paramdef>char *<parameter>value</parameter></paramdef>
+	  <paramdef>int *<parameter>length</parameter></paramdef>
+	  <paramdef>int <parameter>len_item</parameter></paramdef>
+	  <paramdef>int <parameter>len_value</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+<para>Once this translation is known the XS code becomes quite
+straightforward:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="5" id="f77.buffer">
+	  <areaset coords="7" id="f77.defines">
+	    <area coords="7" id="f77.defines.pgend">
+	    <area coords="8" id="f77.defines.pgscr">
+	  </areaset>
+	  <area coords="13" id="f77.pgend">
+	  <area coords="16" id="f77.pgscr">
+	  <area coords="23" id="f77.pgbeg">
+	  <area coords="29" id="f77.pgbeg.call">
+	  <area coords="34" id="f77.pgqinf">
+	  <area coords="38" id="f77.pgqinf.pre">
+	  <area coords="42" id="f77.pgqinf.call">
+	  <area coords="43" id="f77.pgqinf.exprt">
+	</areaspec>
+	<programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#define F77BUFFER  256
+
+#define pgend pgend_
+#define pgscr pgscr_
+
+MODULE = PGPLOT   PACKAGE = PGPLOT
+
+void
+pgend()
+
+void
+pgscr(ci, cr, cg, cb)
+  int &amp;ci
+  int &amp;cr
+  int &amp;cg
+  int &amp;cb
+
+int
+pgbeg(unit, file, nxsub, nysub)
+  int &amp;unit
+  char * file
+  int &amp;nxsub
+  int &amp;nysub
+ CODE:
+  RETVAL = pgbeg_(&amp;unit, file, &amp;nxsub, &amp;nysub, strlen(file));
+ OUTPUT:
+  RETVAL
+
+void
+pgqinf(item, value, length)
+  char * item
+  char * value = NO_INIT
+  int length = NO_INIT
+ PREINIT:
+  char buff[F77BUFFER];
+ CODE:
+  value = buff;
+  pgqinf_(item, value, &amp;length, strlen(item), F77BUFFER);
+  value[length+1] = '\0';
+ OUTPUT:
+  value
+  length
+
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="f77.buffer">
+	    <para>We use this definition to specify the maximum size
+	    of static buffers required to receive strings from Fortran
+	    subroutines.</para>
+	  </callout>
+	  <callout arearefs="f77.defines">
+	    <para>We can set up pre-processor symbols that will allow
+	    us to use the expected names in our XS code but will tell
+	    the C compiler to look for the Fortran name. In principal
+	    all the functions could be defined in this way. For this
+	    example, it is only convenient to do this for simple
+	    functions (those not using character strings, arrays or
+	    multiple return values) that can be dealt with
+	    automatically by the XS compiler without CODE
+	    blocks.</para>
+	  </callout>
+	  <callout arearefs="f77.pgend">
+	    <para><function>pgend</function> is simple because the XS
+	    compiler assumes that it can call a C function
+	    <function>pgend</function> even though the C
+	    pre-preprocessor will translate that text to
+	    <function>pgend_</function>. Without the definition at the
+	    top of the file the XS name will be different to the
+	    function name so a CODE block would be required.</para>
+	  </callout>
+	  <callout arearefs="f77.pgscr">
+	    <para><function>pgscr</function> function takes 4 integer
+	    arguments but must pass them to the Fortran subroutine
+	    using pointers. The XS compiler does this automatically
+	    since the variables are declared with an ampersand as
+	    prefix.</para>
+	  </callout>
+	  <callout arearefs="f77.pgbeg">
+	    <para>This function is not as simple. It takes 4 input
+	    arguments but one of those is a string.</para>
+	  </callout>
+	  <callout arearefs="f77.pgbeg.call">
+	    <para>The integer arguments are passed in as pointers with
+	    the length of the string added as an extra argument to the
+	    C routine. We do not have to convert this string to
+	    Fortran format because we know the length in C and can
+	    simply inform the Fortran compiler of that length
+	    directly.</para>
+	  </callout>
+	  <callout arearefs="f77.pgqinf">
+	    <para>This function has one input string and two output
+	    values. The NO_INIT tag is used to indicate that the input
+	    values for those variables are irrelevant.</para>
+	  </callout>
+	  <callout arearefs="f77.pgqinf.pre">
+	    <para>Allocate memory for a string to receive the output
+	    string.</para>
+	  </callout>
+	  <callout arearefs="f77.pgqinf.call">
+	    <para>Since there are two string arguments, two lengths
+	    are appended to the argument list. The first is the length
+	    of the input string and the second is the length of the
+	    string output string.  In principal the output string
+	    should be padded with blanks before sending it to Fortran
+	    (that step has been omitted for clarity).</para>
+	  </callout>
+	  <callout arearefs="f77.pgqinf.exprt">
+	    <para>The string that comes back from Fortran will not be
+	    nul-terminated. Before sending it back to Perl the string
+	    must be made compatible with C. In this example we know
+	    the length of the string returned to us so we can simply
+	    append the terminator. In general we would need to step
+	    back through the string one character at a time until we
+	    found a non-blank character.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+<para>Once the XS code is written, the final issue is linking. All
+Fortran libraries require that the Fortran runtime library is included
+in the build. In order to simplify the task of keeping track of the
+runtime libraries required on different systems the
+<classname>ExtUtils::F77</classname> module can be used. This module
+attempts to determine the libraries that are required to link Fortran
+programs on your system with the relevant Fortran compiler. A
+<filename>Makefile.PL</filename> for the above XS code that utilises
+this module would look like this:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="2" id="ext.f77">
+	  <area coords="11" id="pgplot.libs">
+	  <area coords="12" id="f77.libs">
+	</areaspec>
+	<programlisting>
+use ExtUtils::MakeMaker;
+use ExtUtils::F77;
+
+# See lib/ExtUtils/MakeMaker.pm for details of how to influence
+# the contents of the Makefile that is written.
+WriteMakefile(
+    'NAME'              => 'PGPLOT',
+    'VERSION_FROM'      => 'PGPLOT.pm', # finds $VERSION
+    'PREREQ_PM'         => {}, # e.g., Module::Name => 1.1
+    'LIBS'              => [ "-L/usr/local/lib -lpgplot " .
+                             "-L/usr/X11R6/lib -lX11 " .
+                             ExtUtils::F77->runtime ], 
+);
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="ext.f77">
+	    <para>Load the <classname>ExtUtils::F77</classname> library.</para>
+	  </callout>
+	  <callout arearefs="pgplot.libs">
+	    <para>The PGPLOT library requires X libraries for some devices</para>
+	  </callout>
+	  <callout arearefs="f77.libs">
+	    <para>The runtime libraries can be returned using the
+	    <methodname>runtime</methodname> class method.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+<para>Now when we run this program we get the following output (with <command>g77</command>):
+</para>
+
+      <programlisting>
+Loaded ExtUtils::F77 version 1.14
+Found compiler g77
+ExtUtils::F77: Using system=Linux compiler=G77
+Runtime: -L/usr/lib/gcc-lib/i386-redhat-linux/2.96 -L/usr/lib -lg2c 
+          -lm -L/usr/lib/gcc-lib/i386-redhat-linux/2.96 -lgcc
+ExtUtils::F77: Validating -L/usr/lib/gcc-lib/i386-redhat-linux/2.96 
+          -L/usr/lib -lg2c -lm -L/usr/lib/gcc-lib/i386-redhat-linux/2.96 
+          -lgcc   [ok]
+ExtUtils::F77: Compiler: g77
+ExtUtils::F77: Cflags: -O
+Writing Makefile for PGPLOT
+</programlisting>
+
+<para>Where <classname>ExtUtils::F77</classname> has determined that
+we will be using the <command>g77</command> compiler and that we need
+the <filename>g2c</filename> runtime library.</para>
+
+<sect3>
+<title>Interface Libraries and Portability</title>
+
+<para>The issue of portability depends on the particular circumstances
+of your module. If you just want to use it on, for example, Solaris
+and Linux where the Fortran implementations are compatible you can
+simply write XS as described above. If on the other hand the intention
+is for your module to be adopted widely you will need to consider
+other operating systems and Fortran compilers. The
+<classname>ExtUtils::F77</classname> helps in this regard since it can
+work out the libraries for many different compiler and OS
+combinations. Additionally it can be used to determine whether a
+trailing underscore is required on function names (this ability can be
+used to set a C pre-processor macro).</para>
+
+<para>There are a number of packages available to simplify the writing
+of portable interface code. One of the most extensive of these is the
+CNF package<footnote><para>The CNF package currently uses the Starlink
+Software Licence. This licence allows for redistribution of source
+code but currently restricts the library to non-commercial use. Moves
+are currently underway to open up the licence.</para></footnote>
+written by <ulink
+url="http://www.starlink.rl.ac.uk">Starlink</ulink><footnote><para>Starlink
+is a research organization in the United Kingdom. It provides data
+processing and analyis software for research astronomers in the
+UK.</para></footnote>. CNF provides an large set of C pre-processor
+macros for dealing with variable types and calling conventions. There
+is also a support library that can be used to convert types (for
+example, strings and arrays) between the languages.  Finally, CNF
+comes with very detailed documentation on the issues associated with
+mixed programming as well as the use of CNF itself.  In order to
+demonstrate this alternative approach, here is the XS code for
+<function>pgqinf</function> re-written to use CNF:
+</para>
+
+	<programlisting>
+void
+fpgqinf(item, value, length)
+  char * item
+  char * value = NO_INIT
+  int length = NO_INIT
+ PREINIT:
+  DECLARE_CHARACTER(fitem, F77BUFFER);
+  DECLARE_CHARACTER(fvalue, F77BUFFER);
+  DECLARE_INTEGER(flength);
+  char buff[F77BUFFER];
+ CODE:
+  cnfExprt(item, fitem, fitem_length);
+  F77_CALL(pgqinf) ( CHARACTER_ARG(fitem),
+		     CHARACTER_ARG(fvalue),
+		     INTEGER_ARG(&amp;flength) 
+		     TRAIL_ARG(fitem)
+		     TRAIL_ARG(fvalue) );
+  length = (int)flength;
+  value  = (char *)buff;
+  cnfImprt( fvalue, length, value );
+ OUTPUT:
+  value
+  length
+</programlisting>
+
+<para>Immediately obvious is the extra verbosity inherent in this
+approach and that in order to guarantee the correct types are being
+used for the Fortran layer a certain amount of copying is involved to
+go from the C to Fortran. This example also uses the translation
+functions <function>cnfExprt</function> and
+<function>cnfImprt</function> to export and import strings. Just to
+prove that CNF is doing the <emphasis>right</emphasis> thing, here is
+the same code block with the macros expanded (using
+<command>g77</command>):</para>
+
+<programlisting>
+char fitem[256]; const int fitem_length = 256;
+char fvalue[256]; const int fvalue_length = 256;
+int flength;
+char buff[256];
+cnfExprt(item, fitem, fitem_length);
+pgqinf_ ( fitem,
+          fvalue,
+          &amp;flength
+          ,fitem_length
+          ,fvalue_length );
+length = (int)flength;
+value = (char *)buff;
+cnfImprt( fvalue, length, value );
+</programlisting>
+
+<para>
+It is clear that the trade-off for portability in this case is counter
+balanced by a decrease in speed of the resulting code. For maximum
+performance it is probably best to make some assumptions.
+</para>
+
+</sect3>
+
+      <sect3>
+	<title>Interface considerations</title>
+
+	<para>The interface provided in this Fortran example is not
+	very <emphasis>perl-y</emphasis>. As described in <xref
+	linkend="xsi.design"> the needs of a particular library should
+	be addressed on a case-by-case basis. The PGPLOT library has a
+	well defined API that has been in use for many years and there
+	are some benefits to following that interface. When migrating
+	from C or Fortran applications it might be easier, both for
+	the author of the module (less documentation to write, no
+	complications with PPCODE blocks) and for the user (no need to
+	learn a new interface) if the Perl port of the library looks
+	as close as possible to that implemented in other
+	languages. This is the approach taken with the
+	<classname>PGPLOT</classname> module on CPAN. For the routines
+	described above, the most likely candidate for change is
+	<function>pgqinf</function>. This routine has one input
+	argument and two return arguments. One of these arguments is
+	simply the length of the string and is not required by Perl. A
+	much better approach from Perl's viewpoint is probably:</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>$value = <function>pgqinf</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) -->
+	    <paramdef>$item</paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>The Perl Data Language goes a step further. The PGPLOT
+	interface in PDL is completely divorced from the underlying
+	library API and uses an object-oriented layer to implement
+	plotting. This has made it easier for users of PDL since
+	different plotting engines can be used with only minimal
+	changes to the perl code.</para>
+
+
+      </sect3>
+
+</sect2>
+
+<sect2>
+<title>Java?</title>
+
+<remark>There is of course JPL (Java Perl Lingo). From the XS point of
+view I'm only interested in the JNI module (along with the base JPL
+module) which allows for java code to be called from Perl. The bulk of
+JNI exists for embedding a perl interpreter inside java rather than
+invoking java methods from perl. JNI does all the hard work so that
+the author of the Java code does not actually use any XS directly so
+it doesn't really sit well in this chapter even if we wanted to talk
+about it. I have tried to build JNI (on linux with JDK1.1.7 and 1.3.0)
+and I have not had much success so far - builds are okay but it
+refuses to launch a new JVM. I have not tried it on Solaris with an
+old JDK). There does not seem to be that much going on with JPL in
+general so it might be safer simply to ignore it. Alternatively,
+Inline::Java seems to come with a JNI interface and does seem to work
+with modern JDKs (that built and tested with no problems on linux).
+</remark>
+
+</sect2>
+
+</sect1>
+
+<sect1 id="advxs.design">
+<title>Interface Design - Part 2</title>
+
+
+<para>In <xref linkend="xsi.design"> we covered the basic interface issues
+    that should be thought about before writing even the simplest XS
+module. Now that we have a more thorough grounding in XS we will
+summarise the design issues that have been brought up during this chapter.
+</para>
+
+    <itemizedlist>
+      <listitem>
+	<para>Look at the functions in the external library. Is the C
+	library using objects in disguise? If it is repeatedly using
+	an internal opaque structure then it is probably best to use
+	that structure as an object in Perl.</para>
+      </listitem>
+      <listitem>
+	<para>Multiple return arguments should be returned as proper
+	return arguments rather than as input arguments that are
+	modified. Use PPCODE to adjust the return stack to
+	suit.</para>
+      </listitem>
+      <listitem>
+	<para>If a status variable can only have two states consider
+	translating the C value to a Perl true or false rather than
+	matching the interface provided by the external calling
+	convention. Alternatively, if the function only returns useful
+	information when the status is good, do not return the status
+	value at all. Return the values if everything is okay, and an
+	empty list or <function>undef</function> otherwise. The
+	<function>XSRETURN_*</function> functions are provided for
+	this purpose.</para>
+
+	<para>Using our example from <xref linkend="xsi.design"> we can then change a signature of:</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>int <function>compute</function></funcdef> 
+	    <!-- one of (PARAMDEF VARARGS VOID) --> 
+	    <paramdef>int <parameter>factor</parameter></paramdef>
+	    <paramdef>double *<parameter>result</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>to</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>$result = <function>compute</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) --> <paramdef>
+	    <parameter>factor</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>using the following XS code:</para>
+
+	<programlisting>
+double
+compute( factor )
+  int factor
+ PREINIT:
+  int status;
+ CODE:
+  status = compute( factor, &amp;RETVAL);
+ OUTPUT:
+  RETVAL
+ CLEANUP:
+   if (status == -1)
+     XSRETURN_UNDEF;
+</programlisting>
+
+      </listitem>
+      <listitem>
+	<para>C++ context-based method overloading provides a
+	particular headache for interface design. If it is possible to
+	determine the correct method from the argument stack (for
+	example by counting the number of arguments) then it is
+	possible to have a single perl method that calls the required
+	C++ method. If the distinction is simply by type then it may
+	be necessary to either have distinct perl methods (one for
+	each type) or a single perl method that is uses a relevant
+	perl type (since perl does not care about the difference
+	between an integer, double or string) . This issue is
+	disccussed in <xref linkend="advxs.cxx"></para>
+      </listitem>
+    </itemizedlist>
+
+<para>Finally, don't be scared of using perl. Many of these examples
+can be simplified by using a perl intermediary layer (for example,
+using <function>pack</function>/<function>unpack</function> to handle
+arrays). If you feel stronger in perl than in C this is a valid
+approach. If you feel that you need the extra speed you can recode it
+in C without needing to change the external interface to the
+module. The important thing is to have a clean public
+interface. </para>
+
+</sect1>
+
+<sect1 id="advxs.inside">
+    <title>What's Really Going On?</title>
+
+    <para>So far in this book, we have created XS files, typed
+    <command>make</command> and watched whilst lots of interesting
+    things scroll off the screen. In this section we will take a
+    closer look at what is really happening to these XS files and how
+    XSUB really interface to the Perl internals.</para>
+
+    <para>The XS interface exists to simplify the way user-supplied C
+    code can be called from within Perl by being one layer above the
+    perl internals.  In principal it is possible to write the C code
+    directly without going through the XS layer at all but this
+    approach is not recommended since (a) it is more complex than is
+    required for simple interfacing, (b) it is repetitive and error
+    prone when providing an interface to many external functions and
+    (c) may suffer compatibility problems if the internals are
+    changed.</para>
+
+    <sect2>
+      <title>What does xsubpp generate?</title>
+
+      <para>By now we know that the first step in creating an XS
+      module is for the <command>xsubpp</command> command to process
+      the XS file in conjunction with a typemap file and from these
+      generate a C file that can be compiled. Here we will revisit
+      some of the XS examples from <xref linkend="xsi.further"> but this
+      time we will take a look at the <filename>.c</filename> output
+      files. To refresh our memories here is the XS file that we will
+      be experimenting with:</para>
+
+      <programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+
+size_t strconcat (char* str1, char* str2, char* outstr) {
+   strcpy( outstr, (const char*)str1 );
+   strcat( outstr, (const char*)str2 );
+   return strlen( outstr );
+}
+
+MODULE = Example		PACKAGE = Example		
+
+int
+treble ( x )
+  int x
+ CODE:
+   RETVAL = 3*x;
+ OUTPUT:
+  RETVAL
+
+size_t
+strconcat( str1, str2, outstr )
+  char* str1
+  char* str2
+  char* outstr = NO_INIT
+ PREINIT:
+  size_t length;
+ CODE:
+  length = strlen( str1 ) + strlen( str2 ) + 1;
+  New(0, outstr, length, char );
+  RETVAL = strconcat( str1, str2, outstr );
+ OUTPUT:
+  outstr
+  RETVAL
+ CLEANUP:
+  Safefree( outstr );
+</programlisting>
+
+
+      <para>If we now build this module we will find a C file called
+      <filename>Example.c</filename> in the working directory. This
+      file will contain the something like the following: </para>
+
+      <remark>This is crying out for extensive annotation but I don't
+      feel that callouts can really do what I want to do here. Should
+      be a <quote>hedgehog</quote> diagram but I'm loathe to try and
+      do one in xfig. Need to investigate drawing packages.</remark>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="10" id="advxs.xstoc.line1">
+	</areaspec>
+	<programlisting>
+/*
+ * This file was generated automatically by xsubpp version 1.9507 from the 
+ * contents of Example.xs. Do not edit this file, edit Example.xs instead.
+ *
+ *	ANY CHANGES MADE HERE WILL BE LOST! 
+ *
+ */
+
+#line 1 "Example.xs"
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+
+size_t strconcat (char* str1, char* str2, char* outstr) {
+   strcpy( outstr, (const char*)str1 );
+   strcat( outstr, (const char*)str2 );
+   return strlen( outstr );
+}
+
+#line 25 "Example.c"
+XS(XS_Example_treble)
+{
+    dXSARGS;
+    if (items != 1)
+	Perl_croak(aTHX_ "Usage: Example::treble(x)");
+    {
+	int	x = (int)SvIV(ST(0));
+	int	RETVAL;
+	dXSTARG;
+#line 21 "Example.xs"
+   RETVAL = 3*x;
+#line 37 "Example.c"
+	XSprePUSH; PUSHi((IV)RETVAL);
+    }
+    XSRETURN(1);
+}
+
+XS(XS_Example_strconcat)
+{
+    dXSARGS;
+    if (items != 3)
+	Perl_croak(aTHX_ "Usage: Example::strconcat(str1, str2, outstr)");
+    {
+	char*	str1 = (char *)SvPV(ST(0),PL_na);
+	char*	str2 = (char *)SvPV(ST(1),PL_na);
+	char*	outstr;
+#line 31 "Example.xs"
+  size_t length;
+#line 54 "Example.c"
+	size_t	RETVAL;
+	dXSTARG;
+#line 33 "Example.xs"
+  length = strlen( str1 ) + strlen( str2 ) + 1;
+  New(0, outstr, length, char );
+  RETVAL = strconcat( str1, str2, outstr );
+#line 61 "Example.c"
+	sv_setpv((SV*)ST(2), outstr);
+	SvSETMAGIC(ST(2));
+	XSprePUSH; PUSHi((IV)RETVAL);
+#line 40 "Example.xs"
+  Safefree( outstr );
+#line 67 "Example.c"
+    }
+    XSRETURN(1);
+}
+
+#ifdef __cplusplus
+extern "C"
+#endif
+XS(boot_Example)
+{
+    dXSARGS;
+    char* file = __FILE__;
+
+    XS_VERSION_BOOTCHECK ;
+
+        newXS("Example::treble", XS_Example_treble, file);
+        newXS("Example::strconcat", XS_Example_strconcat, file);
+    XSRETURN_YES;
+}
+</programlisting>
+      </programlistingco>
+
+<para>The global things to get from this file are the
+following:</para>
+
+      <itemizedlist>
+	<listitem>
+	  <para>The C code that appears in the XS file before the
+	  MODULE keyword is passed through unchanged.</para>
+	</listitem>
+	<listitem>
+	  <para>Each XS function appears as a real C function but with
+	  a modified name. The name is derived by concatenating the
+	  fixed prefix <function>XS_</function>, a C-ified form of the
+	  current PACKAGE (as defined by the PACKAGE keyword in the XS
+	  file) and the function name itself. If a PREFIX is defined
+	  then that is removed from the function name before
+	  concatenation. For example, if the function name is
+	  <function>slaMap</function>, with a prefix of
+	  <quote>sla</quote> and a package name of
+	  <classname>Astro::SLA</classname>, the internal function
+	  name will be <function>XS_Astro__SLA_Map</function>. Here
+	  the colons have been replaced with underscores.</para>
+	</listitem>
+	<listitem>
+	  <para>If there are a fixed number of arguments, code has
+	  been inserted to check the correct number are on the stack
+	  and to issue an error message if necessary.</para>
+	</listitem>
+	<listitem>
+	  <para>Whenever there is a shift from original code to
+	  auto-generated code, the line numbering is changed to
+	  indicate the source of the code. This is achieved using the
+	  <literal>#line</literal> special
+	  directive<footnote><para>Identical to the
+	  <literal>#line</literal> special comment supported by perl
+	  and described in the <filename>perlsyn</filename>
+	  manpage.</para></footnote>. This means that if an error
+	  occurs in an XS line any compiler error messages will point
+	  to the correct line and file name rather than to the line in
+	  the translated C code. This simplifies debugging
+	  enormously.</para>
+	</listitem>
+	<listitem>
+	  <para>The final section is completely auto-generated. The
+	  boot function is responsible for registering the XS
+	  functions with perl and is called automatically by
+	  DynaLoader when the module is loaded.</para>
+	</listitem>
+      </itemizedlist>
+
+      <para>Now that we have a global overview of the file contents,
+      we can cover the relationship between the XS definition
+      of a function and the final C code. The XS sections are
+      propogated to the C translation without changing the inherent
+      order. Arguments are declared first, then comes additional
+      variable definitions (PREINIT), CODE blocks, the handling of
+      output variables and finally, CLEANUP code is included to tidy
+      things up. Of course there are many other types of XS
+      declarations and they are included by <command>xsubpp</command>
+      in the same way. Most of these steps simply entail the addition
+      of some standard stack handling code or the insertion verbatim
+      of the code supplied by the module author. The main
+      complications involve variable input and output. These involve
+      the stack handling and variable declarations. Let's take a
+      closer look at the <function>strconcat</function> function shown
+      above. The XS declaration and corresponding C code were:</para>
+
+      <programlisting>
+char* str1
+char* str2
+char* outstr = NO_INIT
+</programlisting>
+<para>and</para>
+      <programlisting>
+char*	str1 = (char *)SvPV(ST(0),PL_na);
+char*	str2 = (char *)SvPV(ST(1),PL_na);
+char*	outstr;
+</programlisting>
+
+      <para><command>xsubpp</command> does the following to generate
+      this code:</para>
+
+      <orderedlist>
+	<listitem>
+	  <para>Look up <type>char*</type> in the typemap file(s).</para>
+	</listitem>
+	<listitem>
+	  <para>Look up T_PV in the INPUT section.</para>
+	</listitem>
+	<listitem>
+	  <para>See if the INPUT entry matches /\t\$var =/.</para>
+	  <itemizedlist>
+	    <listitem>
+	      <para> If it matches then the typemap entry is assumed
+	      to be a single statement and the variable can be
+	      declared and assigned at the same time. This is the case
+	      with T_PV which has a typemap entry of
+	      <userinput>&lt;tab&gt;$var =
+	      ($type)SvPV($arg,PL_na)</userinput>.</para>
+	    </listitem>
+	    <listitem>
+	      <para>If it does not match this (for example, because
+	      the variable is to be type-checked before copying as
+	      is the case with T_AVREF) the variable is simply
+	      declared and the typemap code is deferred until after
+	      the other variable declarations (after the remaining
+	      arguments are declared and after PREINIT blocks). This
+	      is necessary since C does not allow varaiables to be
+	      declared midway through a code block.</para>
+	    </listitem>
+	  </itemizedlist>
+	</listitem>
+	<listitem>
+	  <para>Replace all the Perl variables in the typemap entry
+	  with the corresponding values and print them to the C
+	  file. Recall that <function>ST(n)</function> refers to an SV
+	  on the argument stack (<xref linkend="advxs.argstack">). In
+	  this example positions 0 and 1 are relevant and nothing is
+	  copied from position 2.</para>
+	</listitem>
+      </orderedlist>
+
+<para>Return variables are dealt with in a similar way unless a PPCODE
+block is used. In our <function>strconcat</function> function the
+output code for <varname>outstr</varname> is simply the typemap entry
+with variable substitutions. The <varname>RETVAL</varname> return
+variable is dealt with in the same manner except
+<command>xsubpp</command> recognizes the standard variable types and
+translates them into the corresponding PUSH commands rather than using
+the OUTPUT typemap entry.</para>
+
+</sect2>
+
+</sect1>
+
+<sect1 id="advxs.summary">
+<title>Summary</title>
+
+<para>In this chapter we have extended our knowledge of XS to cover
+files, hashes, arrays and callbacks and have seen how the XS code and
+typemap files translate into code suitable for use by the Perl
+internals. We have also seen how write XS code suitable for
+interfacing perl to libraries written in Fortran and C++.</para>
+
+<para>In subsequent chapters we will step further away from the internals
+and see what systems are available to simplify the linking of perl to
+external libraries.</para>
+
+</sect1>
+
+<sect1 id="advxs.reading">
+<title>Further Reading</title>
+
+<remark>It would be really nice to provide some kind of appendix
+explaining the different <quote>standard</quote> typemaps. Some of them
+are very strange and all are essentially undocumented. For now, simply
+reference my XS::Typemap documentation (part of perl 5.7.1) where I
+have documented most of them.</remark>
+
+    <variablelist>
+      <varlistentry>
+	<term>perlxstut manpage</term>
+	<listitem>
+	  <para>This XS tutorial comes with Perl and provides
+	  several XS examples.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>perlxs manpage</term>
+	<listitem>
+	  <para>This manpage contains detailed information on XS. </para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>perlcall manpage</term>
+	<listitem>
+	  <para>This manpage from the standard distribution contains a lot of information on setting up callbacks. </para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>XS::Typemap</term>
+	<listitem>
+	  <para>Starting with Perl 5.7.1, the source distribution
+	  includes the <classname>XS::Typemap</classname> module that
+	  is used to test that the typemap entries behave as
+	  expected. This module is not installed but the source
+	  contains examples for most of the typemap entries.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>Astro::SLA</term>
+	<term>PGPLOT</term>
+	<listitem>
+	  <para>The <classname>Astro::SLA</classname> and
+	  <classname>PGPLOT</classname> modules on CPAN both contain
+	  helper code that can be used to pack and unpack arrays with
+	  the minimum of effort. The code in the
+	  <filename>arrays.c</filename> file from these distributions
+	  is useful for providing a pre-packaged solution for dealing
+	  with arrays without going to the expense of using
+	  PDL.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+</sect1>
+
+</chapter>

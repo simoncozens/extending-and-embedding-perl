@@ -1,0 +1,139 @@
+<sect3 id="api.NewSV">
+	<title><function>newSV</function> and <function>NEWSV</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>newSV</function></funcdef>
+	    <paramdef>STRLEN <parameter>length</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>NEWSV</function></funcdef>
+	    <paramdef>IV <parameter>id</parameter></paramdef>
+	    <paramdef>STRLEN <parameter>length</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+	  <!-- What does it do? --> 
+
+	  There are many ways to create a new SV in Perl - the most basic are
+	  <function>newSV</function> and <function>NEWSV</function>. Both take a
+	  parameter <replaceable>length</replaceable> - if this is more than
+	  zero, the SV will be a SVPV and the PV will be pre-extended to the
+	  given length. If it is zero, you'll get a SVNULL back. The
+	  <function>NEWSV</function> macro also takes an
+	  <replaceable>id</replaceable> parameter; this was intended to be used
+	  to track where SVs were allocated from in case of memory leaks, but
+	  never really got used - you can use a unique identifier there if you
+	  think it's going to get used again, or <literal>0</literal> if you
+	  aren't bothered.
+	</para>
+
+	<example>
+	  <title> Saving <userinput>eval</userinput>'ed code </title>
+	  <para>
+
+	    <!-- Introduction to example -->
+
+	    When you execute <userinput>eval $string</userinput>, Perl has to
+	    store the code you're evaluating away. In fact, Perl splits it up into
+	    separate lines, so that it can return error messages like this:
+
+	    <programlisting>
+	      syntax error at (eval 1) line 3, at EOF
+	    </programlisting>
+
+	    As you can see, Perl has split up the string and returns an error
+	    message based on the line number. It does this by putting the code
+	    into an array, using the internal <function>S_save_lines</function>
+	    function, in <filename>pp_ctl.c</filename> of the Perl sources:
+	  </para>
+        <programlistingco>
+          <areaspec>
+        <area coords="3" id="api.NewSV.1">
+        <area coords="9" id="api.NewSV.2">
+        <area coords="11" id="api.NewSV.3">
+        <area coords="12" id="api.NewSV.4">
+        <area coords="18" id="api.NewSV.5">
+        <area coords="19" id="api.NewSV.6">
+          </areaspec>
+          <programlisting>
+S_save_lines(pTHX_ AV *array, SV *sv)
+{
+    register char *s = SvPVX(sv);
+    register char *send = SvPVX(sv) + SvCUR(sv);
+    register char *t;
+    register I32 line = 1;
+
+    while (s && s < send) {
+        SV *tmpstr = NEWSV(85,0);
+
+        sv_upgrade(tmpstr, SVt_PVMG);
+        t = strchr(s, '\n');
+        if (t)
+            t++;
+        else
+           t = send;
+
+        sv_setpvn(tmpstr, s, t - s);
+        av_store(array, line++, tmpstr);
+        s = t;
+    }
+}
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.NewSV.1">
+          <para>
+The string <varname>s</varname> contains the text in the SV - that is,
+the text of the Perl code we're splitting up; <varname>send</varname>
+represents the end of the string. 
+        </para>
+        </callout>
+
+        <callout arearefs="api.NewSV.2">
+          <para>
+For every row, before we reach the end of the string, we create a new
+SV using <function>NEWSV</function>; we give it the leak ID 85 and do
+not give a length, because we don't know how long or how short our line
+is likely to be.
+        </para>
+        </callout>
+
+	      <callout arearefs="api.newsv.3">
+		<para>
+We upgrade the new SV to a PVMG, so that the Perl debugger can use the
+magic structure.
+</para>
+	      </callout>
+
+	      <callout arearefs="api.newsv.4">
+		<para>
+The next few lines find the next newline character, and set
+<varname>t</varname> to the start of the next line.
+</para>
+	      </callout>
+
+	      <callout arearefs="api.newsv.5">
+		<para>
+We now have a string running from <varname>s</varname> to
+<varname>t-1</varname> which is our line; we use
+<function>sv_setpvn</function> (See <xref linkend="api.sv.setpvn">) to
+store that string into our temporary SV.
+</para>
+	      </callout>
+
+	      <callout arearefs="api.newsv.6">
+		<para>
+Finally, we store the SV as the next element in the array we're
+building up, and set our string point to <varname>t</varname>, the
+start of the next line.
+</para>
+	      </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+	<para>See also: <xref linkend="api.newav">, 
+<xref linkend="api.newhv">, <xref linkend="api.get.sv"></para>
+      </sect3>

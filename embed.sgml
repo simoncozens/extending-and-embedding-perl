@@ -1,0 +1,988 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter>
+<title>Embedding Perl in C</title>
+
+<sect1>
+<title>What is Embedding?</title>
+    <para>
+      In the first half of this book, we've looked at what it means to
+      extend Perl with additional routines from C. Sometimes, however,
+      there are occasions when you want to call a piece of Perl from
+      inside a C program - we call this "embedding" Perl in C, because
+      we link an entire Perl interpreter inside another C program.
+    </para>
+
+    <sect2>
+      <title>When do I want to embed?</title>
+      <para>
+	The best and most well-known example of embedding Perl in C is
+	Apache's <literal>mod_perl</literal> module. This allows the
+	user to interact with Perl at every level of the Apache web
+	server - one can write configuration files in Perl, write Perl
+	programs to handle HTTP requests with Perl objects, and so
+	on. In short, it allows you to use Perl to script and control
+	the rest of the program.
+      </para>
+      <para>
+	More specific examples include the embedding of Perl into the
+	Xchat IRC client to enable the user to script complex actions
+	in Perl; the GIMP graphics editor, which allows graphical
+	manipulations to be encoded in Perl; vim, a text editor, which
+	can be both configured and manipulated using Perl; and
+	gnumeric, the GNOME spreadsheet, which exposes the data in the
+	spreadsheet cells to Perl for additional manipulation.
+      </para>
+      <para>
+	All of these examples have some common objectives: to make the
+	application extensible through user-provided plugin scripts,
+	to make configuration more flexible by involving a high-level
+	language and the control structures that it provides, and to
+	help the user script common or complex sequences of
+	actions. If an application that you are working with could
+	benefit from these features, you should contemplate the
+	possibility of embedding a Perl interpreter.
+      </para>
+    </sect2>
+    
+    <sect2>
+      <title>When do I <emphasis>not</emphasis> want to embed?</title>
+      <para>
+	Embedding Perl into a program is not a panacea, and embedding
+	Perl into an existing program is not a step to be taken
+	lightly. We don't recommended embedded Perl as a cheap way of
+	avoiding writing a configuration parser or extensible
+	scripting system.
+      </para>
+      <para>
+	Another thing to be conscious of is that embedding Perl into
+	an application will increase its size and memory usage,
+	possibly introduce memory leaks or instabilities, and
+	occasionally slow the application down. Nevertheless, the
+	examples we have given above do show that there is sometimes a
+	really big gain to be won by including Perl in your program.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Things to think about</title>
+      <para>
+	In the next chapter, we'll look in more detail at the
+	decisions that need to be made when embedding Perl into an
+	application. Fundamentally, however, you need to consider to
+	what degree Perl should have access to the guts of your
+	program.
+      </para>
+      <para>
+	This in turn influences details such as which data structures
+	you are going to expose to Perl and how they will appear to
+	the Perl programmer; what C functions in your API will be
+	available, and, again, how they would be used from Perl; where
+	your Perl programs will come from and at what point in the
+	program they will be used, and so on.
+      </para>
+      <para>
+	Again, we'll see practical answers to these questions in the
+	next chapter; let's now see an example of calling a Perl
+	program from inside a C program.
+      </para>
+    </sect2>
+</sect1>
+
+<sect1>
+<title> ``Hello C'' from Perl</title>
+
+    <para>
+      The fundamentals of embedding are simple: we perform almost
+      exactly the same function as the main body of the
+      <literal>perl</literal> binary. That's to say, we construct and
+      initialize an interpreter, use it to parse a string of code, and
+      then execute that code. Here's a simple program which does that.
+    </para>
+
+    <programlistingco>
+      <areaspec>
+	<area coords="1" id="embed.simple.1"/>
+	<area coords="2" id="embed.simple.2"/>
+	<area coords="4" id="embed.simple.3"/>
+	<area coords="8" id="embed.simple.4"/>
+	<area coords="10" id="embed.simple.5"/>
+	<area coords="11" id="embed.simple.6"/>
+	<area coords="12" id="embed.simple.7"/>
+	<area coords="13" id="embed.simple.8"/>
+	<areaset coords="" id="embed.simple.9">
+	  <area coords="14" id="foo.dummy.3"/>
+	  <area coords="15" id="foo.dummy.4"/>
+	</areaset>
+      </areaspec>
+      <programlisting>
+#include &lt;EXTERN.h&gt;
+#include &lt;perl.h&gt;
+
+static PerlInterpreter *my_perl;
+
+int main(int argc, char **argv)
+{
+    char* command_line[] = {"", "-e", "print \"Hello from C!\\n\";"};
+
+    my_perl = perl_alloc();
+    perl_construct(my_perl);
+    perl_parse(my_perl, NULL, 3, command_line, (char **)NULL);
+    perl_run(my_perl);
+    perl_destruct(my_perl);
+    perl_free(my_perl);
+}
+</programlisting>
+      <calloutlist>
+	<callout arearefs="embed.simple.1">
+	  <para>
+	    This first header file sets up some macros to tell the
+	    main Perl header file that we're not really Perl itself,
+	    but an external application using the Perl API.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.2">
+	  <para>
+	    Now we load up the main Perl header, which provides the
+	    macros and prototypes for all the functions in the Perl
+	    API.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.3">
+	  <para>
+	    Since one can actually have multiple Perl interpreters in
+	    a program, all the interpreter-global data gets stored in
+	    a structure called, naturally, a <classname>PerlInterpreter</classname>.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.4">
+	  <para>
+	    Even when we're embedding Perl, we're dealing with the
+	    honest-to-goodness Perl interpreter, which expects to get
+	    arguments from the command line. Hence, we have to provide
+	    a set of command line arguments, just as we'd expect to
+	    find in <literal>argv</literal>. (And just like in
+	    <literal>argv</literal>, the first element of the array is
+	    the name of the command, rather than the first command
+	    line argument; since we're not bothered about that, we
+	    leave it blank.)
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.5">
+	  <para>
+	    Just like any other structure pointer, we need to allocate
+	    memory for it; <literal>perl_malloc</literal> returns us
+	    some memory for a Perl interpreter.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.6">
+	  <para>
+	    Next, we set up the interpreter and all its associated
+	    data structures with <literal>perl_construct</literal>.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.7">
+	  <para>
+	    Now we're in a position where we can parse the incoming
+	    Perl "script", which is specified in the
+	    <literal>-e</literal> argument to the faked command line.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.8">
+	  <para>
+	    As we know, Perl is bytecode-compiled - first, the code is
+	    parsed into an internal representation, and then it's run;
+	    <literal>perl_run</literal> starts the main loop running
+	    the code.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.9">
+	  <para>
+	    Finally, we cleanly shut down the interpreter, and release
+	    the memory that had been allocated for it.
+	  </para>
+	</callout>
+      </calloutlist>
+    </programlistingco>
+    <para>
+      It's interesting to compare this with the source to the Perl
+      interpreter itself; if you don't believe we're performing the
+      same functions as the Perl interpreter, take a look at the guts
+      of <filename>miniperlmain.c</filename>:
+      <programlisting>
+    if (!PL_do_undump) {
+        my_perl = perl_alloc();
+        if (!my_perl)
+            exit(1);
+        perl_construct(my_perl);
+        PL_perl_destruct_level = 0;
+    }
+
+    exitstatus = perl_parse(my_perl, xs_init, argc, argv, (char **)NULL);
+    if (!exitstatus) {
+        exitstatus = perl_run(my_perl);
+       perl_destruct(my_perl);
+       exitstatus = STATUS_NATIVE_EXPORT;
+    } else {
+      perl_destruct(my_perl);
+    }
+
+    perl_free(my_perl);
+
+    PERL_SYS_TERM();
+
+    exit(exitstatus);
+    return exitstatus;
+</programlisting>
+      As you can see, this is more or less the same as the above with
+      a little more error checking.
+    </para>
+    <sect2>
+      <title>Compiling Embedded Programs</title>
+      <para>
+	Compiling programs which embed Perl is a little bit special;
+	you need to ensure that you're compiling the code with exactly
+	the same options that were used to compile the Perl
+	interpreter. While we could get these out of
+	<filename>Config.pm</filename>, there's a module which makes
+	it very easy for us: <classname>ExtUtils::Embed</classname>. 
+      </para>
+      <para>
+	As we know from the first chapter, a program's compilation
+	takes place in two stages: compilation proper, and
+	linking. <classname>ExtUtils::Embed</classname> provides two
+	functions, <literal>ccopts</literal> and
+	<literal>ldopts</literal> to tell us the options for each
+	stage. In fact, if we run these functions from the Perl
+	command line, they'll handily spit the options to standard
+	output, making it ideal to use as part of our build process.
+      </para>
+      <para>
+	So, let's take the example code above,
+	<filename>simple.c</filename>, and compile it and then link it:
+	<screen>
+ % cc -o simple.o -c simple.c `perl -MExtUtils::Embed -e ccopts`
+ % cc -o simple simple.o `perl -MExtUtils::Embed -e ldopts`
+ % ./simple
+Hello from C!
+</screen>
+      </para>
+      <para>
+	Now we have a way to execute simple Perl programs from C,
+	albeit if we specify them on the Perl command line;
+	let's make this a bit more powerful.
+      </para>
+    </sect2>
+</sect1>
+
+<sect1>
+<title> Passing Data</title>
+    <para>
+      In a real embedded application, we need a way to share data
+      between Perl and C. For instance, the Apache embedded Perl
+      module, <literal>mod_perl</literal>, allows you to store
+      configuration data in Perl variables.
+    </para>
+    <para>
+      As we saw in <xref linkend="api.get.sv">, Perl provides a
+      function called <literal>get_sv</literal> which allows to grab
+      an SV from the Perl symbol table. Let's suppose we're writing a
+      mail client, (we'll call it "Hermes") and we want our users to
+      be able to set some of the configuration in Perl. First, we'll
+      look at general settings which apply to the whole application;
+      in the next section, we'll write some logic for settings which
+      apply on a per-message basis.
+    </para>
+    <para>
+      Our sample configuration file would look something like this:
+      <programlisting>
+package Hermes;
+
+$save_outgoing = 1;
+
+# Prefer vim, but use emacs if vim not available.
+$editor = `which vim` || `which emacs`; 
+
+$quote_char = "> ";
+
+$check_every = 10; # seconds
+</programlisting>
+    </para>
+    <para>
+      Now, inside our mail client, we're going to want to have Perl
+parse and run this configuration, and we'll want to get at the
+results. Well, we know how to do the first part: we allocate, make and
+instantiate a Perl interpreter.
+</para>
+
+    <programlisting>
+#include &lt;EXTERN.h&gt;
+#include &lt;perl.h&gt;
+
+static PerlInterpreter *my_perl;
+
+int parse_config(char * config_file)
+{
+    char* command_line[2] = {"", NULL};
+    command_line[1] = config_file;
+
+    my_perl = perl_alloc();
+    perl_construct(my_perl);
+    if (perl_parse(my_perl, NULL, 3, command_line, (char **)NULL)) {
+        return 0; /* Failed to parse */ 
+    }
+
+    perl_run(my_perl);
+    if (SvTRUE(ERRSV)) {
+        return 0; /* Failed to execute */
+    }
+
+    return 1;
+}
+
+</programlisting>
+    <para>
+This is substantially the same as the above, except that the "command
+line" passed to Perl is determined at run time, when the name of the
+configuration file is passed in to the
+<function>parse_config</function>.  The other difference is that once
+we have run the Perl, we check whether or not <literal>ERRSV</literal>
+is true; this is the C-side equivalent of checking
+<literal>$@</literal>.
+</para>
+    <para>
+Now we have our Perl run, we should be able to get at the values using
+the <literal>get_sv</literal> function. For instance, when it comes
+to time to send a mail message for text editing:
+<programlisting>
+
+int edit_message(char* filename) {
+    char *editor;
+
+    editor = SvPV_nolen(get_sv("Hermes::editor"));
+
+    /* And now we execute the editor */
+    ...
+}
+</programlisting>
+</para>
+    <para>
+      Similarly, we can set these SVs to values from our C code if we
+      want to communicate information back to Perl, using
+      <literal>get_sv</literal>. However, it's more usual for us to
+      pass values to Perl subroutines, so let's see how to do this. 
+    </para>
+  </sect1>
+
+  <sect1>
+    <title> Calling Perl Routines</title>
+    <para>
+      The techniques we saw in <xref linkend="advxs.cb.imm"> for
+      calling Perl subroutines from XS are equally applicable to
+      calling Perl subroutines from an embedded program. We still need
+      to go about putting parameters onto the stack, making a call out
+      to Perl, and collecting return values. Let's take a closer look
+      at those techniques now.
+    </para>
+    <para>
+      Perl has a number of different functions for calling routines,
+      but the two we're going to concentrate on are
+      <function>call_sv</function> and
+      <function>call_pv</function>. How you decide which one to call
+      is easy: if you have an SV which refers to a subroutine - one
+      which contains either a code reference or a subroutine's name (a
+      symbolic reference) - then you use
+      <function>call_sv</function>. Otherwise, if you only have the
+      name as a string, you use <function>call_pv</function>.
+    </para>
+    <para>
+      The typical embedded program will generally call subroutines by
+      name, using <function>call_pv</function>, although there are
+      instances where <function>call_sv</function> is correct.
+    </para>
+    <para>
+      For example, let's suppose we want to allow users of our mailer
+      to define a subroutine which gets passed a mail message for
+      pre-processing as the user replies to it. We could state in our
+      program's embedding API that the configuration file must define
+      a subroutine called <function>Hermes::reply_to_hook</function>,
+      and we could use <function>call_pv</function> with the string
+      <literal>"Hermes::reply_to_hook"</literal>, or we could allow
+      something like this:
+      <programlisting>
+package Hermes;
+$reply_to_hook = sub {
+	my @mail = @_;
+	...
+}
+</programlisting>
+    </para>
+    <para>
+      In this case, we'd use <function>get_sv("Hermes::reply_to_hook",
+      TRUE)</function> to return a code reference, which we'd then
+      call with <function>call_sv</function>.
+    </para>
+    <para>
+      We'll see another example of where <function>call_sv</function>
+      is necessary when we look at callbacks later in the chapter, but
+      for now, we'll concentrate on <function>call_pv</function>.
+    </para>
+    <para>
+      Here's the simplest possible instance of calling a Perl routine
+      from C; it has no parameters and no return value. One good
+      example of this type of routine would be an exit handler -
+      something that our mail program calls when it's about to quit,
+      so that any state established by the Perl program can be cleared
+      up<footnote>
+	<para>
+	  Of course, this is what <literal>END</literal> blocks are
+	  for, and if we used an <literal>END</literal> block in our
+	  Perl configuration file, then all this would get done
+	  automatically, but that would not make a good example.
+	</para>
+      </footnote>.
+      This would be the Perl side of it: 
+      <programlisting>
+package Hermes;
+    sub atexit {
+    # Close any open file handles
+    ...
+    # 
+    print "Thank you for using Hermes/Perl. Going away now.\n";
+}
+</programlisting>
+</para>
+    <para>
+      And here would be the C side:
+<programlistingco>
+	<areaspec>
+	  <area coords="2" id="embed.perlstop.1">
+	  <area coords="3" id="embed.perlstop.2">
+	  <area coords="5" id="embed.perlstop.3">
+	  <area coords="6" id="embed.perlstop.4">
+	  <areaset coords="" id="embed.perlstop.5">
+	    <area coords="8" id="embed.dummy.1">
+	    <area coords="9" id="embed.dummy.2">
+	  </areaset>
+	</areaspec>
+      <programlisting>
+/* Clean up Perl embedding */
+void perl_stop(void) {
+    dSP;
+
+    PUSHMARK(SP);
+    call_pv("Hermes::atexit", G_DISCARD | G_NOARGS);
+
+    perl_destruct(my_perl);
+    perl_free(my_perl);
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="embed.perlstop.1">
+	    <para>
+	      This function will be used before the mailer exits to
+	      shut down all elements of the Perl embedding - we'll
+	      call our exit handler routine
+	      <function>Hermes::atexit</function>, and then close down
+	      the Perl interpreter. It's a good idea when you're
+	      embedding to keep the number of function which interact
+	      with the Perl interpreter to a minimum, and if possible,
+	      in their own separate file. Hence, we have a wrapper
+	      function which can be called anywhere in our mailer
+	      to shut down the Perl embedding.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.perlstop.2">
+	    <para>
+	      As in <xref linkend="advxs.cb.imm">,
+	      <literal>dSP</literal> provides local access to Perl's
+	      argument stack.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.perlstop.3">
+	    <para>
+	      <literal>PUSHMARK</literal> pushes a "bookmark" onto the
+	      argument stack. In our example in Advanced XS, we used
+	      quite a complicated prologue to calling the callback,
+	      using
+	      <literal>ENTER</literal>/<literal>SAVETMPS</literal>/<literal>PUSHMARK</literal>
+	      and
+	      <literal>PUTBACK</literal>/<literal>FREETMPS</literal>/<literal>LEAVE</literal>,
+	      but as we are not concerned about parameters and return
+	      values here, we can do without most of these. However,
+	      we must still push a bookmark.
+	    </para>
+	    <para>
+	      This is because the argument stack is not always empty;
+	      if we're already inside a Perl expression, the stack
+	      will certainly not be empty. However, when a callback
+	      receives parameters or returns values, it needs to know
+	      how many items from the top of the stack "belong" to
+	      it. For instance, there may already be four items on the
+	      stack before we call
+	      <literal>Hermes::atexit</literal>. Let's suppose we want
+	      to push another two items on as parameters. Perl needs
+	      some way of knowing that the four items previously on
+	      the stack are no concern of <literal>atexit</literal>,
+	      and so it pushes a bookmark to denote the bottom of the
+	      'local' stack.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.perlstop.4">
+	    <para>
+	      Now we call the routine. <function>call_pv</function>
+	      and <function>call_sv</function> take two parameters:
+	      the name or SV for the subroutine to be called, and a
+	      set of flags. In this instance, our flags are
+	      <literal>G_DISCARD</literal>, signifying that we're
+	      going to discard the output of the call, (and therefore
+	      that <literal>Hermes::atexit</literal> should be called
+	      in void context) and <literal>G_NOARGS</literal> to
+	      state that we're not pushing in any arguments, so the
+	      subroutine doesn't need to look at the stack.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.perlstop.5">
+	    <para>
+	      Now we've called the routine, we can shut down the
+	      interpreter and free the memory it used in preparation
+	      for exiting the program.
+	    </para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+    </para>
+    <sect2>
+      <title>Stack Manipulation</title>
+      <para>
+	So much for the easy case. Unfortunately, in most other
+	examples, we have both parameters and return values to deal with.
+      </para>
+      <para>
+	First, parameters. We already know the basics of this from
+	<xref linkend="advxs.cstruct.retlist">; we're going to use
+	<literal>PUSHs</literal> to put things on the stack. So that
+	the values that we put on the stack are properly garbage
+	collected, we need to make them temporary, to tell Perl that
+	they should go away at the end of the scope. This means we
+	have to declare a scope, and this is where the
+	<literal>ENTER</literal>/<literal>SAVETMPS</literal>/<literal>PUSHMARK</literal>
+	business comes in.
+      </para>
+      <para>
+	Let's take another example from our mythical mailer, and pass
+	a mail message to a Perl function for pre-processing. The
+	message will come in as an array of strings, so we need to
+	make them all into temporary SVs before pushing them onto the
+	stack.
+      </para>
+      <programlistingco>
+	<areaspec>
+
+	  <area coords="2" id="embed.pp1.1">
+	  <areaset coords="" id="embed.pp1.2">
+	    <area coords="5" id="foo.dummy.5">
+	    <area coords="6" id="foo.dummy.6">
+	  </areaset>
+	  <area coords="7" id="embed.pp1.3">
+	  <areaset coords="" id="embed.pp1.4">
+	    <area coords="9" id="foo.dummy.7">
+	    <area coords="10" id="foo.dummy.8">
+	  </areaset>
+	  <area coords="12" id="embed.pp1.5">
+	  <area coords="14" id="embed.pp1.6">
+	  <areaset coords="" id="embed.pp1.7">
+	    <area coords="9" id="foo.dummy.9">
+	    <area coords="10" id="foo.dummy.10">
+	  </areaset>
+	</areaspec>
+	<programlisting>
+void preprocess_callout(char** message) {
+     dSP;
+     int i;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     call_pv("Hermes::preprocess", G_DISCARD);
+
+     FREETMPS;
+     LEAVE;
+
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="embed.pp1.1">
+	    <para>
+	      As before, we need a copy of the stack pointer so we
+	      know where things are going.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.2">
+	    <para>
+	      We start by opening a new scope with
+	      <literal>ENTER</literal> and setting out a new set of
+	      temporaries for collection with <literal>SAVETMPS</literal>.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.3">
+	    <para>
+	      Again, we push a bookmark to declare the local
+	      bottom of the stack.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.4">
+	    <para>
+	      Now we iterate over the array, creating new SVs for each
+	      of the lines of the message, (see <xref
+	      linkend="api.newsvpv">) making them temporary with
+	      <function>sv_2mortal</function> and then pushing them
+	      onto the stack. If we happened to know how many lines we
+	      had in advance, we could use
+	      <function>EXTEND(n)</function> to pre-extend the stack
+	      and then use <function>PUSHs</function> instead of
+	      <function>XPUSHs</function>, but this way keeps things simple.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.5">
+	    <para>
+	      <literal>PUTBACK</literal> sets Perl's copy of the stack
+	      pointer equal to the <literal>SP</literal> we have -
+	      since we've put things on the stack, out
+	      <literal>SP</literal> will have grown, but our changes
+	      to the local variable need to be reflected in the global
+	      stack pointer.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.6">
+	    <para>
+	      Now we can call the function; this time we have some
+	      arguments, so we don't use <literal>G_NOARGS</literal>,
+	      but we're still discarding the return value.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp1.7">
+	    <para>
+	      Finally, we clean up the temporaries we created and
+	      close the scope.
+	    </para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+      <para>
+	Now, it's not much good preprocessing a message if you don't
+	get the message back after preprocessing it, so we have to
+	deal with return values. Once again, we're making use of the
+	same principles we saw in respect to XS callbacks. We can
+	modify our example slightly:
+      </para>
+
+      <programlistingco>
+	<areaspec>
+	  <area coords="16" id="embed.pp2.1">
+	  <area coords="18" id="embed.pp2.2">
+	  <area coords="24" id="embed.pp2.3">
+	</areaspec>
+	<programlisting>
+char** preprocess_callout(char** message) {
+     dSP;
+     int i;
+     int count;
+     char **newmessage;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     count = call_pv("Hermes::preprocess", G_ARRAY);
+
+     SPAGAIN;
+
+     newmessage = malloc(count * sizeof(char*));
+     i = count;
+
+     while (i > 0)
+         newmessage[--i] = savepv(SvPV_nolen(POPs));
+      
+     FREETMPS;
+     LEAVE;
+
+     return newmessage;
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="embed.pp2.1">
+	    <para>
+	      This time we use <literal>G_ARRAY</literal> to specify
+	      that we're calling the function in array context, and
+	      <function>call_pv</function> returns the number of
+	      values returned by the subroutine.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp2.2">
+	    <para>
+	      Because the subroutine will have put some more values on
+	      the stack, we need to refresh our local copy of the
+	      stack pointer - this is what <literal>SPAGAIN</literal>
+	      does. Again, this is the same as we saw in <xref
+	      linkend="advxs.cb.imm">.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp2.3">
+	    <para>
+	      The way we fetch the values is slightly tricky. First,
+	      we have to remember that the values come off the stack
+	      in reverse order, so we put the first value to be popped
+	      at the end of the array. Second, we need to remember
+	      that the values on the stack are temporaries, and will
+	      be swept away at the <literal>FREETMPS</literal>. Since
+	      we don't want to end up with an array of null pointers,
+	      we make a copy of each string with
+	      <function>savepv</function>.
+	    </para>
+	    <para>
+	      We also need to remember that arrays are zero-based, so
+	      if <varname>count</varname> = 2, we should store the
+	      first value in <varname>newmessage[1]</varname>. This is
+	      why we say <varname>newmessage[--i]</varname>.
+	    </para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+    </sect2>
+    <sect2>
+      <title>Context</title>
+      <para>
+	We've seen that the <literal>G_</literal>... flags can be used
+	to affect the context of a call. For instance, we can force
+	scalar context on a list function by passing the
+	<function>G_SCALAR</function> flag. The
+	<filename>perlcall</filename> documentation has a
+	comprehensively list of what all the flag values do and how
+	they affect the context of your call.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Trapping errors with <literal>eval</literal></title>
+      <para>
+	One thing you may have noticed is that if there is a fatal
+	error generated by the Perl subroutine, then the entire
+	process gets shut down. This is probably something you want to
+	guard against in embedded situations, so there is another
+	<literal>G_</literal>... flag you ought to be aware of.
+      </para>
+      <para>
+	<literal>G_EVAL</literal> is the equivalent of wrapping the
+	code to be executed in an <literal>eval { ... } </literal>
+	block. Let's modify our example again to make sure it doesn't
+	die on us.
+      </para>
+      <programlistingco>
+	<areaspec>
+	  <area coords="16" id="embed.pp3.1">
+	  <area coords="20" id="embed.pp3.2">
+	  <area coords="21" id="embed.pp3.3">
+	</areaspec>
+	<programlisting>
+char** preprocess_callout(char** message) {
+     dSP;
+     int i;
+     int count;
+     char **newmessage;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     count = call_pv("Hermes::preprocess", G_ARRAY | G_EVAL);
+
+     SPAGAIN;
+
+     if (SvTRUE(ERRSV)) {
+         display_message("An error occurred in the Perl preprocessor: %s",
+           SvPV_nolen(ERRSV)); 
+         return message; /* Go with the original */
+     }
+
+     newmessage = malloc(count * sizeof(char*));
+     i = count;
+
+     while (i > 0)
+         newmessage[--i] = savepv(SvPV_nolen(POPs));
+      
+     FREETMPS;
+     LEAVE;
+
+     return newmessage;
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="embed.pp3.1">
+	    <para>
+	      Adding the <literal>G_EVAL</literal> flag is all we need
+	      to do to protect ourselves from a <literal>die</literal>
+	      in the Perl code.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp3.2">
+	    <para>
+	      Once we've called the subroutine and restored the stack
+	      to normality, we check to see whether or not the error
+	      SV (<varname>$@</varname>) has a true value.
+	    </para>
+	  </callout>
+	  <callout arearefs="embed.pp3.3">
+	    <para>
+	      Assuming we have a function for displaying formatted
+	      messages, we spit out the text of the error message, and
+	      return the original array unmodified.
+	    </para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+    </sect2>
+    <sect2>
+      <title>Calling Perl methods in C</title>
+      <para>
+	As we know, there are two types of method - an object method
+	and a class method. These are both called using the
+	<function>call_method</function> function from C code; the
+	trick here is that the object (in the case of an object
+	method) or an SV representing the class name (in the case of a
+	class method) must be placed on the stack before any
+	parameters. Here's an example of calling an object method from C:
+      </para>
+      <programlisting>
+
+    PUSHMARK(sp);
+    XPUSHs(object);
+    XPUSHs(param);
+    PUTBACK;
+
+    call_method("display", G_DISCARD);
+
+</programlisting>
+    </sect2>
+    <sect2>
+      <title>Calling Perl statements</title>
+      <para>
+	But isn't this a lot of work? There ought to be a much easier
+	way of running Perl code from C. Thankfully, Perl provides
+	functions called <function>eval_pv</function> and
+	<function>eval_sv</function>, which are essentially the
+	equivalent of <literal> eval "..."</literal>. As with
+	<literal>eval</literal>, we can do anything that we can
+	normally do in a Perl program, including loading other
+	modules.
+      </para>
+      <para>
+	For instance, we can use Perl to nicely format a C string,
+	using the <literal>Text::Autoformat</literal> module:
+	<programlisting>
+char* tidy_string (char* input) {
+    SV* result;
+
+    setSVpv(PL_defsv, input, 0);
+    result = eval_pv("use Text::Autoformat; autoformat($_)", FALSE);
+    if (SvTRUE(ERRSV)) 
+        return NULL;
+    else
+        return SvPV_nolen(result);
+}
+</programlisting>
+      </para>
+      <para>
+	Notice that we stored the input string in
+	<varname>$_</varname>, (<varname>PL_defsv</varname>) and that
+	the second argument to <function>eval_pv</function> and
+	<function>eval_sv</function> is a boolean denoting the
+	behaviour on error - if this is <literal>TRUE</literal>, then
+	the process will exit if the Perl code <literal>die</literal>s.
+      </para>
+      <para>
+	In many cases, <function>eval_sv</function> and
+	<function>eval_pv</function> are all you need to get a lot out
+	of embedding Perl in your application. The
+	<filename>perlembed</filename> man page contains a very good
+	example of making use of Perl's regular expression functions
+	from C using these functions.
+      </para>
+    </sect2>
+  </sect1>
+
+  <sect1>
+    
+    <title>Using C in Perl in C</title>
+    
+    <para>
+      In many cases when embedding Perl in C, you're providing the
+      user with an alternative way of scripting the program's
+      behaviour. Because of this, you often want to provide a way for
+      the user's Perl to perform actions back in the original C
+      program. For instance, the <literal>mod_perl</literal> Apache
+      module allows Perl programs to control incoming HTTP requests;
+      this involves such things as finding out information about the
+      request and sending a HTTP response back via the Apache server
+      to the remote client. These things can't be done from Perl, and
+      have to be implemented as calls to C functions inside
+      Apache. That's to say, as well as an embedding framework, we
+      also need some XS modules to expose the C API of our programs
+      back to the Perl scripts.
+    </para>
+    <para>
+      Let's assume that we've written an XS module to do this. If we
+      then try the obvious solution:
+      <programlisting>
+	eval_pv("use Hermes;", TRUE);
+      </programlisting>
+      then this happens:
+      <screen>
+	<computeroutput>
+Can't load module Hermes, dynamic loading not available in this perl.
+(You may need to build a new perl executable which either supports
+dynamic loading or has the Hermes module statically linked into it.)
+</computeroutput>
+</screen>
+    </para>
+    <para>
+      The very basic Perl interpreter that we created does not have
+      support for dynamic loading of XS modules<footnote>
+	<para>
+	  This is, in fact, the exact difference between
+	  <filename>miniperlmain.c</filename>, from which we took our
+	  first example, and <filename>perlmain.c</filename>, which is
+	  the main file used in building an ordinary <filename>perl</filename>.
+	</para>
+      </footnote>
+. 
+    </para>
+    <para>
+      Adding this support is easy, especially since
+      <classname>ExtUtils::Embed</classname> can help us out again.
+    </para>
+    <sect2>
+      <title>Callbacks and data</title>
+      <para></para>
+    </sect2>
+
+  </sect1>
+
+  <sect1>
+    <title>Using multiple interpreters</title>
+    <para></para>
+  </sect1>
+</chapter>

@@ -1,0 +1,45 @@
+<sect3 id="api.hv.delete">
+    <title><function>hv_delete_ent</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>SV* <function>hv_delete_ent</function></funcdef>
+        <paramdef>HV* <parameter>hash</parameter></paramdef>
+        <paramdef>SV* <parameter>key</parameter></paramdef>
+        <paramdef>I32 <parameter>flags</parameter></paramdef>
+        <paramdef>U32 <parameter>hashval</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.hv.delete.1">
+        <area coords="2" id="api.hv.delete.2">
+        <area coords="3" id="api.hv.delete.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.hv.delete.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.hv.delete.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

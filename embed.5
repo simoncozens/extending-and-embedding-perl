@@ -1,0 +1,9 @@
+
+int edit_message(char* filename) {
+    char *editor;
+
+    editor = SvPV_nolen(get_sv("Hermes::editor"));
+
+    /* And now we execute the editor */
+    ...
+}

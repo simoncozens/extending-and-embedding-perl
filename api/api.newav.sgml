@@ -1,0 +1,94 @@
+<sect3 id="api.newav">
+	<title><function>newAV</function></title>
+
+	<funcsynopsis>
+	  <funcprototype>
+	  <funcdef>AV* <function>newAV</function></funcdef>
+	  <void>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+Creates a brand new array in C space, completely unconnected to the Perl
+symbol table and thus inaccessible from Perl. This is usually what
+you'll want to use if you don't need any Perl code to see your array.
+</para>
+
+	<example>
+	  <title>Storing <classname>END</classname> blocks</title>
+
+	  <para>
+	  Perl has several ``special'' named blocks of code:
+	  <classname>BEGIN</classname>, <classname>END</classname>,
+	  <classname>DESTROY</classname> and so on. The
+	  <filename>perlmod</filename> documentation tells us that:
+<blockquote>
+	      <para>
+An <classname>END</classname> subroutine is executed as late as
+possible, that is, after <filename>perl</filename> has finished running the
+program and just before the interpreter is being exited, even if it is
+exiting as a result of a <function>die</function> function.  &ellip;
+You may have multiple <classname>END</classname> blocks within a file--they
+will execute in reverse order of definition; that is: last in, first
+out (LIFO).
+
+</para>
+	    </blockquote>
+
+If we can have multiple blocks, what better to store them in than an
+array? In fact, this is exactly what Perl does: <filename>op.c:4769</filename>
+
+<programlistingco>
+	      <areaspec>
+		<area coords="1" id="api.ende.streq">
+		<area coords="3" id="api.ende.newav">
+		<area coords="5" id="api.ende.unshift">
+	      </areaspec>
+	      <programlisting>
+    else if (strEQ(s, "END") &amp;&amp; !PL_error_count) {
+       if (!PL_endav)
+           PL_endav = newAV();
+       DEBUG_x( dump_sub(gv) );
+       av_unshift(PL_endav, 1);
+       av_store(PL_endav, 0, (SV*)cv);
+       GvCV(gv) = 0;               /* cv has been hijacked */
+    }
+</programlisting>
+	    </programlistingco>
+We're in the middle of a function called
+<function>newATTRSUB</function> which is called to set up one of the
+special blocks.
+<calloutlist>
+	      <callout arearefs="api.ende.streq">
+		<para>
+<varname>s</varname> contains the name of the block - if this is
+<literal>END</literal> and we haven't had any errors compiling it,
+we've got a valid <classname>END</classname> block, which we're going
+to store in the array <varname>PL_endav</varname>.
+</para>
+	      </callout>
+	      <callout arearefs="api.ende.newav">
+		<para>
+First, though, we check to see if that array exists yet -
+if the pointer points to zero, it's not there, so we create a new array
+using the <function>newAV</function> function.
+</para>
+	      </callout>
+	      <callout arearefs="api.ende.unshift">
+		<para>
+ Since <classname>END</classname> blocks are processed in last in,
+ first out order, we put each successive end block at the beginning of
+ the array - we call <function>av_unshift</function> (See <xref
+ linkend="api.av.push">) to move all the elements up, and then
+ <function>av_store</function> (See <xref linkend="api.av.store">) to
+ store the code for this block (the CV) at the first element of the
+ array.
+
+</para>
+	      </callout>
+	    </calloutlist>
+</para>
+	</example>
+	<para>
+See also: <xref linkend="api.newsv">, <xref linkend="api.newhv">
+</para>
+      </sect3>

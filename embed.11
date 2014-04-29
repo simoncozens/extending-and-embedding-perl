@@ -1,0 +1,36 @@
+char** preprocess_callout(char** message) {
+     dSP;
+     int i;
+     int count;
+     char **newmessage;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     count = call_pv("Hermes::preprocess", G_ARRAY | G_EVAL);
+
+     SPAGAIN;
+
+     if (SvTRUE(ERRSV)) {
+         display_message("An error occurred in the Perl preprocessor: %s",
+           SvPV_nolen(ERRSV)); 
+         return message; /* Go with the original */
+     }
+
+     newmessage = malloc(count * sizeof(char*));
+     i = count;
+
+     while (i > 0)
+         newmessage[--i] = savepv(SvPV_nolen(POPs));
+      
+     FREETMPS;
+     LEAVE;
+
+     return newmessage;
+}

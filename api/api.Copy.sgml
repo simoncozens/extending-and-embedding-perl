@@ -1,0 +1,74 @@
+<sect3 id="api.Copy">
+	<title><function>Copy</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>void <function>Copy</function></funcdef>
+	    <paramdef>void* <parameter>src</parameter></paramdef>
+	    <paramdef>void* <parameter>dest</parameter></paramdef>
+	    <paramdef>int <parameter>items</parameter></paramdef>
+	    <paramdef>type</paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+	  <function>Copy</function> is the XS version of the standard
+	  C <function>memcpy</function>. It copies an area of memory
+	  from a source to a destination.
+	  <example>
+	    <title> Beating <function>sprintf</function> </title>
+	    <para>
+
+	      When you write to the elements of
+	      <varname>%ENV</varname>, Perl modifies the process's
+	      environment. It does this by setting up a string of the
+	      form <literal>key=value</literal> and then handing this
+	      to the operating system's way of modifying the
+	      environment. Normally, you'd use
+	      <literal>sprintf(buffer, "%s=%s", key, value)</literal>
+	      to achieve this, but Perl defines a macro to help it
+	      do things a little faster... (in <filename>util.c</filename>)
+        <programlistingco>
+          <areaspec>
+        <area coords="2" id="api.Copy.1">
+        <area coords="3" id="api.Copy.2">
+        <area coords="4" id="api.Copy.3">
+        <area coords="5" id="api.Copy.4">
+          </areaspec>
+          <programlisting>
+#define my_setenv_format(s, nam, nlen, val, vlen) \
+   Copy(nam, s, nlen, char); \
+   *(s+nlen) = '='; \
+   Copy(val, s+(nlen+1), vlen, char); \
+   *(s+(nlen+1+vlen)) = '\0'
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.Copy.1">
+          <para>
+		      First we copy <replaceable>nlen</replaceable>
+		      characters from the key string into the
+		      beginning of our buffer <varname>s</varname>.
+        </para>
+        </callout>
+
+        <callout arearefs="api.Copy.2">
+          <para>
+		      After that, we set the next character to be the
+		      <literal>=</literal>.
+        </para>
+        </callout>
+		  <callout arearefs="api.copy.3">
+		    <para>
+		      Next, we copy <replaceable>vlen</replaceable>
+		      characters of the value to the end of that.
+		    </para>
+		  </callout>
+		  <callout arearefs="api.copy.4">
+		    <para>
+		      And finally we add our null-terminating string.
+		    </para>
+		  </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+</para>
+    <para>See also: <xref linkend="api.Move">, <xref linkend="api.StructCopy"></para>
+      </sect3>

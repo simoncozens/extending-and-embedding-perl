@@ -1,0 +1,162 @@
+<sect3 id="api.PL.sv.undef">
+	<title><varname>PL_sv_undef</varname></title>
+	<para>
+	  <!-- What does it do? -->
+	  This is the undefined value; you should use it when, for
+	  instance, you want to return <literal>undef</literal> rather
+	  than an empty list or a false value. Note that
+	  <function>PL_sv_undef</function> is actually the SV
+	  structure itself - since you'll usually want a pointer to an
+	  SV, you should use this as
+	  <function>&amp;PL_sv_undef</function> whenever anything
+	  needs a <type>SV*</type>.
+	  <example>
+	    <title> <userinput>$/ = undef</userinput> in C</title>
+	    <para>
+	      <!-- Introduction to example --> This example is taken
+	      from the Apache module <filename>mod_perl</filename>,
+	      which embeds a Perl interpreter inside the Apache web
+	      browser. We're going to look at an entire function which
+	      takes a request for a file, opens the file, reads it all
+	      into an SV, and returns a reference to it. In Perl, we'd
+	      write it like this:
+
+<programlisting>
+    sub mod_perl_slurp_filename {
+        my ($request) = @_;
+        my $sv;
+
+        local $/ = undef;
+        open FP, $request->{name};
+        $sv = &lt;FP&gt;;
+        close FP;
+
+        return \$sv;
+    }
+</programlisting>
+
+	      Now let's see how we'd write it in C. 
+
+
+	      <tip>
+		<para>
+		  Since this is our first example, we haven't
+		  introduced any of the other functions in the Perl
+		  API yet. Don't worry; we'll provide a commentary on
+		  exactly what's going on, and you're encouraged to
+		  jump around to the entries for other functions so
+		  you know what they do. We'll also skim over some
+		  things which will be covered in further chapters
+		  which are peripheral to the points we're making.
+		</para>
+	      </tip>
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="8" id="api.PL.sv.undef.1">
+        <area coords="9" id="api.PL.sv.undef.2">
+        <area coords="11" id="api.PL.sv.undef.3">
+        <area coords="12" id="api.PL.sv.undef.4">
+        <area coords="13" id="api.PL.sv.undef.5">
+        <area coords="14" id="api.PL.sv.undef.6">
+        <area coords="16" id="api.PL.sv.undef.7">
+          </areaspec>
+          <programlisting>
+SV *mod_perl_slurp_filename(request_rec *r)
+{
+    dTHR;
+    PerlIO *fp;
+    SV *insv;
+
+    ENTER;
+    save_item(PL_rs);
+    sv_setsv(PL_rs, &amp;PL_sv_undef);
+
+    fp = PerlIO_open(r->filename, "r");
+    insv = newSV(r->finfo.st_size);
+    sv_gets(insv, fp, 0); /*slurp*/
+    PerlIO_close(fp);
+    LEAVE;
+    return newRV_noinc(insv);
+}
+
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="api.PL.sv.undef.1">
+		  <para>
+		    <varname>PL_rs</varname> is the record separator,
+		    and <function>save_item</function> is the
+		    equivalent to <function>local</function>; it'll
+		    save a copy of the variable away, and restore it
+		    at the end of the current `XS block' - the code
+		    delimited by <function>ENTER</function> and
+		    <function>LEAVE</function>.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.undef.2">
+		  <para>
+		    We set this SV equal to <literal>undef</literal>
+		    using the function
+		    <function>sv_setsv</function>. (See <xref
+		    linkend="api.sv.setsv">)
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.undef.3">
+		  <para>
+		    <function>PerlIO_open</function> opens a file -
+		    the first parameter is the filename, which we
+		    extract from the request structure
+		    <varname>r</varname>, and the second parameter is
+		    the mode: we're opening the file for reading. This
+		    will give us a filehandle back, just like the
+		    <function>open</function> function in Perl.
+		  </para>
+		</callout>
+		
+		<callout arearefs="api.PL.sv.undef.4">
+		  <para>
+		    We now use <function>newSV</function> (see <xref
+		    linkend="api.newsv">) to create a new SV to receive
+		    the file contents. We pass the size of the file as
+		    a parameter to <function>newSV</function> so that
+		    Perl can grow the string to the appropriate length
+		    in advance.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.undef.5">
+		  <para>
+		    <function>sv_gets</function> is equivalent to the
+		    readline (<function>&lt;&gt;</function>) operator
+		    in Perl - it reads a line from the specified
+		    filehandle into the SV. Since we've set the record
+		    separator to <literal>undef</literal>, this has
+		    the effect of slurping the entire file.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.undef.6">
+		  <para>
+		    Now we close the filehandle with
+		    <function>PerlIO_close</function>.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.PL.sv.undef.7">
+		  <para>
+		    Finally, we use <function>newRV_noinc</function>
+		    (see <xref linkend="api.newrv">) to create a
+		    reference to the SV, without increasing its
+		    reference count, and return the new reference.
+		  </para>
+		</callout>
+
+
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+	</para>
+	<para>See also: <xref linkend="api.PL.sv.yesno">.</para>
+      </sect3>

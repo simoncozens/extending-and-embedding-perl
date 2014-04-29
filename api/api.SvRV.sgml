@@ -1,0 +1,105 @@
+<sect3 id="api.SvRV">
+	<title><function>SvRV</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>SvRV</function></funcdef>
+	    <paramdef>SV* <parameter>rv</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+	  Given a reference <replaceable>rv</replaceable>,
+	  <function>SvRV</function> dereferences the SV. Note that, as
+	  with <function>newRV</function>, this SV can be an SV, AV,
+	  HV or even another RV. You can use the
+	  <function>SvTYPE</function> function to work out what sort
+	  of value to expect back after dereferencing.
+	  <example>
+	    <title>Dumping the return values</title>
+	    <para>
+	      Here's some debugging code in the middle of the DBI
+	      module; DBI functions, like all XS functions, return
+	      values through the stack. This debugging code prints out
+	      a copy of the stack in a readable format, dealing with
+	      array and hash references as well as ordinary SVs. This
+	      code can be found in <filename>DBI.xs</filename>.
+	    </para>
+	    <programlistingco>
+	      <areaspec>
+		<areaset id="api.svrv.1" coords="">
+		  <area coords="1" id="api.svrv.dummy.1">
+		  <area coords="2" id="api.svrv.dummy.2">
+		</areaset>
+		<area coords="3" id="api.svrv.2">
+		<area coords="4" id="api.svrv.3">
+		<areaset id="api.svrv.4" coords="">
+		  <area coords="7" id="api.svrv.dummy.3">
+		  <area coords="8" id="api.svrv.dummy.4">
+		</areaset>
+		<area coords="13" id="api.svrv.5">
+		<area coords="14" id="api.svrv.6">
+	      </areaspec>
+	      <programlisting>
+        for(i=0; i < outitems; ++i) {
+            SV *s = ST(i);
+            if ( SvROK(s) && SvTYPE(SvRV(s))==SVt_PVAV) {
+                AV *av = (AV*)SvRV(s);
+                int avi;
+                PerlIO_printf(logfp, " [");
+                for(avi=0; avi <= AvFILL(av); ++avi)
+                    PerlIO_printf(logfp, " %s",  neatsvpv(AvARRAY(av)[avi],0));
+                PerlIO_printf(logfp, " ]");
+            }
+            else {
+                PerlIO_printf(logfp, " %s",  neatsvpv(s,0));
+                if ( SvROK(s) && SvTYPE(SvRV(s))==SVt_PVHV && !SvOBJECT(SvRV(s)) )
+                    PerlIO_printf(logfp, "%ldkeys", HvKEYS(SvRV(s)));
+            }
+        }
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="api.svrv.1">
+		  <para>
+		    We loop over the stack, storing each value we're
+		    returning in <varname>s</varname> in turn.
+		  </para>
+		</callout>
+		<callout arearefs="api.svrv.2">
+		  <para>
+		    If it's a reference, and the type of the
+		    referred value is an array, then we're going to
+		    display all the elements in the array.
+		  </para>
+		</callout>
+		<callout arearefs="api.svrv.3">
+		  <para>
+		    First we dereference the array using
+		    <function>SvRV</function>, and then we cast it
+		    into an <type>AV</type>.
+		  </para>
+		</callout>
+		<callout arearefs="api.svrv.4">
+		  <para>
+		    Now we call <function>neatsvpv</function>, a DBI
+		    utility function, on each value of the array,
+		    giving us a cleaned-up version of that SV's string
+		    value. We print this out with
+		    <function>printf</function>.
+		  </para>
+		</callout>
+		<callout arearefs="api.svrv.5">
+		  <para>
+		    If, on the other hand, this is a reference to a
+		    hash, and also if it's not an object...
+		  </para>
+		</callout>
+		<callout arearefs="api.svrv.6">
+		  <para>
+		    Then we dereference the hash and print out its
+		    number of keys.
+		  </para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+	</para>
+      </sect3>

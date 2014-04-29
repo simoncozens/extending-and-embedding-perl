@@ -1,0 +1,30 @@
+char** preprocess_callout(char** message) {
+     dSP;
+     int i;
+     int count;
+     char **newmessage;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     count = call_pv("Hermes::preprocess", G_ARRAY);
+
+     SPAGAIN;
+
+     newmessage = malloc(count * sizeof(char*));
+     i = count;
+
+     while (i > 0)
+         newmessage[--i] = savepv(SvPV_nolen(POPs));
+      
+     FREETMPS;
+     LEAVE;
+
+     return newmessage;
+}

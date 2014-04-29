@@ -1,0 +1,59 @@
+<!doctype book PUBLIC "-//OASIS//DTD DocBook V4.1//EN"[
+<!ENTITY intro     SYSTEM  "intro.sgml">
+<!ENTITY cintro    SYSTEM  "cintro.sgml">
+<!ENTITY cadv      SYSTEM  "cadv.sgml">
+<!ENTITY perlvar   SYSTEM  "perlvar.sgml">
+<!ENTITY api       SYSTEM  "api.sgml">
+<!ENTITY xsintro   SYSTEM  "xsintro.sgml">
+<!ENTITY altxs     SYSTEM  "altxs.sgml">
+<!ENTITY advxs     SYSTEM  "advxs.sgml">
+<!ENTITY embed     SYSTEM  "embed.sgml">
+<!ENTITY emstudy   SYSTEM  "emstudy.sgml">
+<!ENTITY internals SYSTEM  "internals.sgml">
+<!ENTITY hacking   SYSTEM  "hacking.sgml">
+<!ENTITY moreapi   SYSTEM  "moreapi.sgml">
+<!ENTITY perl "<literal>perl</literal>">
+]>
+
+<book>
+  <bookinfo>
+      <title>Using Perl and C</title>
+    <authorgroup>
+      <author>
+	<firstname>Tim</firstname>
+	<surname>Jenness</surname>
+      </author>
+      <author>
+	<firstname>Simon</firstname>
+	<surname>Cozens</surname>
+      </author>
+    </authorgroup>
+    <edition>Draft</edition>
+    <copyright>
+      <!-- obviously this will change in the final version -->
+      <year>2000</year>
+      <year>2001</year>
+      <holder>Timothy Jenness, Simon Cozens</holder>
+    </copyright>
+  </bookinfo>
+  <toc>
+    <tocpart>
+      <tocentry>You won't see this; this is just to make sure it
+      autogenerates the TOC.</tocentry>
+    </tocpart>
+  </toc>
+  &intro;
+  &cintro;
+  &xsintro;
+  &cadv;
+  &perlvar;
+  &api;
+  &advxs;
+  &altxs;
+  &moreapi;
+  &embed; 
+  &emstudy; 
+  &internals;
+  &hacking;
+
+</book>

@@ -1,0 +1,10 @@
+/* Clean up Perl embedding */
+void perl_stop(void) {
+    dSP;
+
+    PUSHMARK(SP);
+    call_pv("Hermes::atexit", G_DISCARD | G_NOARGS);
+
+    perl_destruct(my_perl);
+    perl_free(my_perl);
+}

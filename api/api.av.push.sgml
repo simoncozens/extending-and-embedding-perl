@@ -1,0 +1,49 @@
+<sect3 id="api.av.push">
+	<title><function>av_push</function> and
+	<function>av_unshift</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef> <function>av_push</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+        <paramdef>SV* <parameter>value</parameter></paramdef>
+      </funcprototype>
+      <funcprototype>
+        <funcdef> <function>av_unshift</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+        <paramdef>SV* <parameter>value</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av_push.1">
+        <area coords="2" id="api.av_push.2">
+        <area coords="3" id="api.av_push.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av_push.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_push.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+</para>
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

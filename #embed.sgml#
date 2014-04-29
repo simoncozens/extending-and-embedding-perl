@@ -1,0 +1,350 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter>
+<title>Embedding Perl in C</title>
+
+<sect1>
+<title>What is Embedding?</title>
+    <para>
+      In the first half of this book, we've looked at what it means to
+      extend Perl with additional routines from C. Sometimes, however,
+      there are occasions when you want to call a piece of Perl from
+      inside a C program - we call this "embedding" Perl in C, because
+      we link an entire Perl interpreter inside another C program.
+    </para>
+
+    <sect2>
+      <title>When do I want to embed?</title>
+      <para>
+	The best and most well-known example of embedding Perl in C is
+	Apache's <literal>mod_perl</literal> module. This allows the
+	user to interact with Perl at every level of the Apache web
+	server - one can write configuration files in Perl, write Perl
+	programs to handle HTTP requests with Perl objects, and so
+	on. In short, it allows you to use Perl to script and control
+	the rest of the program.
+      </para>
+      <para>
+	More specific examples include the embedding of Perl into the
+	Xchat IRC client to enable the user to script complex actions
+	in Perl; the GIMP graphics editor, which allows graphical
+	manipulations to be encoded in Perl; vim, a text editor, which
+	can be both configured and manipulated using Perl; and
+	gnumeric, the GNOME spreadsheet, which exposes the data in the
+	spreadsheet cells to Perl for additional manipulation.
+      </para>
+      <para>
+	All of these examples have some common objectives: to make the
+	application extensible through user-provided plugin scripts,
+	to make configuration more flexible by involving a high-level
+	language and the control structures that it provides, and to
+	help the user script common or complex sequences of
+	actions. If an application that you are working with could
+	benefit from these features, you should contemplate the
+	possibility of embedding a Perl interpreter.
+      </para>
+    </sect2>
+    
+    <sect2>
+      <title>When do I <emphasis>not</emphasis> want to embed?</title>
+      <para>
+	Embedding Perl into a program is not a panacea, and embedding
+	Perl into an existing program is not a step to be taken
+	lightly. We don't recommended embedded Perl as a cheap way of
+	avoiding writing a configuration parser or extensible
+	scripting system.
+      </para>
+      <para>
+	Another thing to be conscious of is that embedding Perl into
+	an application will increase its size and memory usage,
+	possibly introduce memory leaks or instabilities, and
+	occasionally slow the application down. Nevertheless, the
+	examples we have given above do show that there is sometimes a
+	really big gain to be won by including Perl in your program.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Things to think about</title>
+      <para>
+	In the next chapter, we'll look in more detail at the
+	decisions that need to be made when embedding Perl into an
+	application. Fundamentally, however, you need to consider to
+	what degree Perl should have access to the guts of your
+	program.
+      </para>
+      <para>
+	This in turn influences details such as which data structures
+	you are going to expose to Perl and how they will appear to
+	the Perl programmer; what C functions in your API will be
+	available, and, again, how they would be used from Perl; where
+	your Perl programs will come from and at what point in the
+	program they will be used, and so on.
+      </para>
+      <para>
+	Again, we'll see practical answers to these questions in the
+	next chapter; let's now see an example of calling a Perl
+	program from inside a C program.
+      </para>
+    </sect2>
+</sect1>
+
+<sect1>
+<title> ``Hello C'' from Perl</title>
+
+    <para>
+      The fundamentals of embedding are simple: we perform almost
+      exactly the same function as the main body of the
+      <literal>perl</literal> binary. That's to say, we construct and
+      initialize an interpreter, use it to parse a string of code, and
+      then execute that code. Here's a simple program which does that.
+    </para>
+
+    <programlistingco>
+      <areaspec>
+	<area coords="1" id="embed.simple.1">
+	<area coords="2" id="embed.simple.2">
+	<area coords="4" id="embed.simple.3">
+	<area coords="8" id="embed.simple.4">
+	<area coords="10" id="embed.simple.5">
+	<area coords="11" id="embed.simple.6">
+	<area coords="12" id="embed.simple.7">
+	<area coords="13" id="embed.simple.8">
+	<area coords="14" id="embed.simple.9">
+	<area coords="15" id="embed.simple.9">
+	<!-- one of (AREASET AREA) -->
+      </areaspec>
+      <programlisting>
+#include &lt;EXTERN.h&gt;
+#include &lt;perl.h&gt;
+
+static PerlInterpreter *my_perl;
+
+int main(int argc, char **argv)
+{
+    char* command_line[] = {"", "-e", "print \"Hello from C!\\n\";"};
+
+    my_perl = perl_alloc();
+    perl_construct(my_perl);
+    perl_parse(my_perl, NULL, 3, command_line, (char **)NULL);
+    perl_run(my_perl);
+    perl_destruct(my_perl);
+    perl_free(my_perl);
+}
+</programlisting>
+      <calloutlist>
+	<callout arearefs="embed.simple.1">
+	  <para>
+	    This first header file sets up some macros to tell the
+	    main Perl header file that we're not really Perl itself,
+	    but an external application using the Perl API.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.2">
+	  <para>
+	    Now we load up the main Perl header, which provides the
+	    macros and prototypes for all the functions in the Perl
+	    API.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.3">
+	  <para>
+	    Since one can actually have multiple Perl interpreters in
+	    a program, all the interpreter-global data gets stored in
+	    a structure called, naturally, a <class>PerlInterpreter</class>.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.4">
+	  <para>
+	    Even when we're embedding Perl, we're dealing with the
+	    honest-to-goodness Perl interpreter, which expects to get
+	    arguments from the command line. Hence, we have to provide
+	    a set of command line arguments, just as we'd expect to
+	    find in <literal>argv</literal>. (And just like in
+	    <literal>argv</literal>, the first element of the array is
+	    the name of the command, rather than the first command
+	    line argument; since we're not bothered about that, we
+	    leave it blank.)
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.5">
+	  <para>
+	    Just like any other structure pointer, we need to allocate
+	    memory for it; <literal>perl_malloc</literal> returns us
+	    some memory for a Perl interpreter.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.6">
+	  <para>
+	    Next, we set up the interpreter and all its associated
+	    data structures with <literal>perl_construct</literal>.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.7">
+	  <para>
+	    Now we're in a position where we can parse the incoming
+	    Perl "script", which is specified in the
+	    <literal>-e</literal> argument to the faked command line.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.8">
+	  <para>
+	    As we know, Perl is bytecode-compiled - first, the code is
+	    parsed into an internal representation, and then it's run;
+	    <literal>perl_run</literal> starts the main loop running
+	    the code.
+	  </para>
+	</callout>
+	<callout arearefs="embed.simple.9">
+	  <para>
+	    Finally, we cleanly shut down the interpreter, and release
+	    the memory that had been allocated for it.
+	  </para>
+	</callout>
+      </calloutlist>
+    </programlistingco>
+    <para>
+      It's interesting to compare this with the source to the Perl
+      interpreter itself; if you don't believe we're performing the
+      same functions as the Perl interpreter, take a look at the guts
+      of <filename>miniperlmain.c</filename>:
+      <programlisting>
+    if (!PL_do_undump) {
+        my_perl = perl_alloc();
+        if (!my_perl)
+            exit(1);
+        perl_construct(my_perl);
+        PL_perl_destruct_level = 0;
+    }
+
+    exitstatus = perl_parse(my_perl, xs_init, argc, argv, (char **)NULL);
+    if (!exitstatus) {
+        exitstatus = perl_run(my_perl);
+       perl_destruct(my_perl);
+       exitstatus = STATUS_NATIVE_EXPORT;
+    } else {
+      perl_destruct(my_perl);
+    }
+
+    perl_free(my_perl);
+
+    PERL_SYS_TERM();
+
+    exit(exitstatus);
+    return exitstatus;
+</programlisting>
+      As you can see, this is more or less the same as the above with
+      a little more error checking.
+    </para>
+    <sect2>
+      <title>Compiling Embedded Programs</title>
+      <para>
+	Compiling programs which embed Perl is a little bit special;
+	you need to ensure that you're compiling the code with exactly
+	the same options that were used to compile the Perl
+	interpreter. While we could get these out of
+	<filename>Config.pm</filename>, there's a module which makes
+	it very easy for us: <classname>ExtUtils::Embed</classname>. 
+      </para>
+      <para>
+	As we know from the first chapter, a program's compilation
+	takes place in two stages: compilation proper, and
+	linking. <classname>ExtUtils::Embed</classname> provides two
+	functions, <literal>ccopts</literal> and
+	<literal>ldopts</literal> to tell us the options for each
+	stage. In fact, if we run these functions from the Perl
+	command line, they'll handily spit the options to standard
+	output, making it ideal to use as part of our build process.
+      </para>
+      <para>
+	So, let's take the example code above,
+	<filename>simple.c</filename>, and compile it and then link it:
+	<screen>
+ % cc -o simple.o -c simple.c `perl -MExtUtils::Embed -e ccopts`
+ % cc -o simple simple.o `perl -MExtUtils::Embed -e ldopts`
+ % ./simple
+Hello from C!
+</screen>
+      </para>
+      <para>
+	Now we have a way to execute simple Perl programs from C,
+	albeit if we specify them on the Perl command line;
+	let's make this a bit more powerful.
+      </para>
+    </sect2>
+</sect1>
+
+<sect1>
+<title> Passing Data</title>
+    <para>
+      In a real embedded application, we need a way to share data
+      between Perl and C. For instance, the Apache embedded Perl
+      module, <literal>mod_perl</literal>, allows you to store
+      configuration data in Perl variables.
+    </para>
+    <para>
+      As we saw in <xref linkend="api.get.sv">, Perl provides a
+      function called <literal>get_sv</literal> which allows to grab
+      an SV from the Perl symbol table. Let's suppose we're writing a
+      mail client, (we'll call it "Hermes") and we want our users to
+      be able to set some of the configuration in Perl. First, we'll
+      look at general settings which apply to the whole application;
+      in the next section, we'll write some logic for settings which
+      apply on a per-message basis.
+    </para>
+    <para>
+      Our sample configuration file would look something like this:
+      <programlisting>
+package Hermes;
+
+$save_outgoing = 1;
+
+# Prefer vim, but use emacs if vim not available.
+$editor = `which vim` || `which emacs`; 
+
+$quote_char = "> ";
+
+$check_every = 10; # seconds
+</programlisting>
+    </para>
+    <para>
+      Now we provide some C code to execute the Perl code in that
+      configuration file, and extract the values:
+      <programlisting>
+#include &lt;EXTERN.h&gt;
+#include &lt;perl.h&gt;
+
+static PerlInterpreter *my_perl;
+
+void setup_perl(void) {
+	
+}
+
+</programlisting>
+    </para>
+</sect1>
+
+<sect1>
+<title> Calling Perl Routines</title>
+<para>
+
+
+</para>
+
+</sect1>
+
+<sect1>
+<title>Using Perl Regular Expressions</title>
+
+<para>
+</para>
+
+</sect1>
+<sect1>
+
+<title>Using C in Perl in C</title>
+
+<para>
+</para>
+
+</sect1>
+
+</chapter>

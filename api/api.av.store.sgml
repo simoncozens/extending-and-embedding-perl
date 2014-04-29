@@ -1,0 +1,126 @@
+<sect3 id="api.av.store">
+    <title><function>av_store </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>SV** <function>av_store</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+        <paramdef>I32 <parameter>index</parameter></paramdef>
+        <paramdef>SV* <parameter>value</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+Stores an SV in an array; this is equivalent to the Perl code
+<programlisting>
+$array[$index] = $value;
+</programlisting>
+
+</para>
+<example>
+<title> Storing return values in an array </title>
+<para>
+
+<!-- Introduction to example -->
+
+The core <classname>Threads</classname> module manages Perl threads;
+it uses an array for each thread to hold the thread's return
+status. In this (slightly abridged) extract from
+<function>threadstart</function>, we look at what happens when a
+thread terminates and sets up its return
+values. (<filename>$CORE/ext/Thread/Thread.xs:130</filename>)
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av.store.1">
+        <area coords="2" id="api.av.store.2">
+        <area coords="6" id="api.av.store.3">
+        <area coords="10" id="api.av.store.4">
+        <area coords="12" id="api.av.store.5">
+           </areaspec>
+          <programlisting>
+    av = newAV();
+    if (SvCUR(thr->errsv)) {
+        MUTEX_LOCK(&amp;thr->mutex);
+        thr->flags |= THRf_DID_DIE;
+        MUTEX_UNLOCK(&amp;thr->mutex);
+        av_store(av, 0, &amp;PL_sv_no);
+        av_store(av, 1, newSVsv(thr->errsv));
+    }
+    else {
+        av_store(av, 0, &amp;PL_sv_yes);
+        for (i = 1; i <= retval; i++, SP++)
+            sv_setsv(*av_fetch(av, i, TRUE), SvREFCNT_inc(*SP));
+    }
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av.store.1">
+          <para>
+Firstly, we create a new array to hold the return values; since this
+does not need to be accessible in the Perl symbol table, we use
+<function>newAV</function>.
+        </para>
+        </callout>
+
+        <callout arearefs="api.av.store.2">
+          <para>
+If the thread exited with an error message, we need to update the
+thread's status flags to report that it died an unnatural death. (The
+<literal>MUTEX</literal> business on either side of the flag
+manipulation just makes sure that no other threads try and interfere
+while we're doing this.) 
+        </para>
+        </callout>
+
+	<callout arearefs="api.av.store.3">
+		  <para>
+Then we use <function>av_store</function> to store the return status
+in our array: the first element, element zero, will contain a false
+value (see <xref linkend="api.pl.sv.yesno">) to denote failure. We call
+<function>newSVsv</function> to copy the error message into a new SV,
+and then use <function>av_store</function> once more to store our copy
+in element one of our return array.
+</para>
+	</callout>
+
+	<callout arearefs="api.av.store.4">
+		  <para>
+If everything succeeded, on the other hand, we store a true value (see
+<xref linkend="api.pl.sv.yesno">) as the first element of the array.
+</para>
+	</callout>
+
+	<callout arearefs="api.av.store.5">
+		  <para>
+Here we see another way of storing an <classname>SV</classname> in an
+array: we use the <function>av_fetch</function> function with the
+<parameter>lvalue</parameter> parameter set to true to create the
+array element and return a pointer to the new SV; we then dereference
+that pointer and call <function>sv_setsv</function> to set it to what
+we want. Since we're storing the same SV in multiple places without
+taking a copy of it, we must increase the reference count of what
+we're storing.
+</para>
+	</callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+	<warning>
+        <title>Sometimes the core isn't the best example...</title>
+	  <para>
+In the example, the return values from <function>av_fetch</function>
+and <function>av_store</function> are not checked - we merely assume
+that the operations will succeed. While this is usually a pretty safe
+assumption, it's not the best thing to do: if, for instance, the
+<function>av_fetch</function> failed for some reason, we'd attempt to
+dereference zero, which would cause the program to crash. Furthermore,
+you should check that <function>av_store</function> completed
+successfully if you are storing the same SV in multiple places - you
+are responsible for increasing the reference count of the SV before
+calling <function>av_store</function>, and if
+<function>av_store</function> returns zero, you are responsible for
+decreasing the reference count again.
+</para>
+	</warning>
+
+    <para>See also: <xref linkend="api.av.fetch">, <xref linkend="api.hv.store"></para>
+      </sect3>

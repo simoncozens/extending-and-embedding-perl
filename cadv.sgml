@@ -1,0 +1,1473 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+
+<chapter id="cadv">
+  <title>Advanced C</title>
+
+  <para>So far we have provided a simple introduction to the C
+  programming language and used that knowledge to provide perl
+  interfaces to simple C functions. Before we can progress on to a
+  description of the perl internals, and the implementation of perl
+  variables in particular, we need to introduce some more advanced C
+  programming concepts. In this chapter we will show how to use arrays
+  and data structures and how to deal with memory management.</para>
+
+  <sect1 id="cadv.arrays">
+    <title>Arrays</title>
+
+    <para>In Perl arrays are simply collections of scalars. Perl knows
+    how many elements are in the array and allocates memory for new
+    elements as required. In C, arrays are simply a contiguous block
+    of memory that can only store variables of a specific type; an
+    array of integers can only contain integers.  <xref
+    linkend="cadv.arr.eg"> shows how you can create and access arrays
+    of a known size in C along with the Perl equivalent. The use of
+    square brackets is identical to the usage in Perl.</para>
+
+<remark>It has been suggested that this example is too contrived</remark>
+    <example id="cadv.arr.eg">
+      <title>Array handling in C</title>
+
+<programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <areaset coords="" id="cadv.arr.eg.inc">
+	    <area coords="1" id="cadv.arr.eg.inc.a">
+	    <area coords="2" id="cadv.arr.eg.inc.b">
+	  </areaset>
+	  <area coords="6" id="cadv.arr.eg.iarr">
+	  <area coords="7" id="cadv.arr.eg.darr">
+	  <area coords="10" id="cadv.arr.eg.popd">
+	  <area coords="14" id="cadv.arr.eg.printf">
+	</areaspec>
+<programlisting>
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+
+int main () {
+  int i;
+  int iarr[5] = { 10,20,30,40,50 };
+  double darr[10];
+  
+  for (i=0; i&lt;10; i++) {
+    darr[i] = i/100.0;
+  } 
+
+  for (i=0; i&lt;5; i++) {
+    printf("%d %d %f\n", i, iarr[i], darr[i]);
+  }
+
+  exit(0);
+}
+
+#!/usr/bin/perl
+
+@iarr = ( 10, 20, 30, 40, 50 );
+
+for (0..9) {
+  $darr[$_] = $_/100.0;
+}
+
+for (0..4) {
+  printf("%d %d %f\n", $_, $iarr[$_], $darr[$_]);
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="cadv.arr.eg.inc">
+	    <para>Standard include files. These provide prototypes for
+<function>printf</function> and <function>exit</function>.</para>
+	  </callout>
+	  <callout arearefs="cadv.arr.eg.iarr">
+	    <para> Declare an integer array with 5 elements and then
+	    assign the elements using a comma-separated list. (Note
+	    the use of <userinput>{ x, y, z }</userinput> for Perl's
+	    <userinput>(x, y, z)</userinput>.)</para>
+	  </callout>
+	  <callout arearefs="cadv.arr.eg.darr">
+	    <para>Create an array containing 10 double precision
+	    numbers. This array is created empty.</para>
+	  </callout>
+	  <callout arearefs="cadv.arr.eg.popd">
+	    <para>Assign values to each of the elements in the double
+	    precision array.</para>
+	  </callout>
+	  <callout arearefs="cadv.arr.eg.printf">
+	    <para>Print the contents of the first 5 elements of
+	    <varname>iarr</varname> and
+	    <varname>darr</varname>.</para>
+	  </callout>
+	</calloutlist>
+
+      </programlistingco>
+
+    </example>
+
+    <para> One complication for a C programmer is that you must keep
+    track of the number of elements in the array and must allocate
+    a larger chunk of  memory if more elements are required (see <xref
+    linkend="cadv.mem.chg">). This is because the C compiler only
+    allocates the memory that it knows you will need and not the
+    memory you might need. To make things worse, C will not stop you
+    <quote>walking off the end</quote> of the array, by assigning to
+    an element that you have not allocated memory for. For instance,
+    this is perfectly legal (for some definitions of legal...):</para>
+
+      <programlisting>
+int array[10];
+
+array[20] = 1234;
+      </programlisting>
+
+    <para>However, it will almost certainly cause annoying and
+    occasionally difficult to detect problems, as you will be writing
+    either into unallocated memory, possibly causing a segmentation
+    fault, or, worse, into another variable's allocated
+    storage.</para>
+
+  </sect1>
+
+  <sect1 id="cadv.pointers">
+    <title>Pointers</title>
+
+    <para> In the same way as in Perl all arguments in C are passed
+    into subroutines by value so if you have a C function such
+    as:</para>
+
+    <funcsynopsis>
+      <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+      <funcprototype>
+	<funcdef>int <function>findsum</function></funcdef>
+	<!-- one of (PARAMDEF VARARGS VOID) -->
+	<paramdef>int <parameter>in1</parameter></paramdef>
+	<paramdef>int <parameter>in2</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+
+    <para>the subroutine will simply retrieve the values of
+    <varname>in1</varname> and <varname>in2</varname> but will not be
+    able to modify those variables directly. This is analogous to the
+    Perl subroutine:</para>
+
+    <programlisting>
+sub findsum {
+  my $in1 = shift;
+  my $in2 = shift;
+  return ($in1 + $in2);
+}
+</programlisting>
+
+    <para>where the arguments are read from the stack and then used in
+    the subroutine. In C there is no analogue of the variable aliasing
+    trick available in perl (where <varname>@_</varname> can be
+    modified in place) and in order to modify a variable the memory
+    address of the variable must be passed to the function. Once the
+    memory address is available it can be used to modify the value
+    <emphasis>pointed</emphasis> to by this address. Given this
+    definition it is not surprising to find that a variable that
+    contains a memory address is called a
+    <firstterm>pointer</firstterm>.</para>
+
+    <para>Pointers are associated with a particular variable type
+    (much like a reference to a Perl hash is different from a
+    reference to a Perl scalar) although, unlike in Perl, they can be
+    converted to other types by using type-casting. This all means
+    that a pointer to an integer is not the same as a pointer to a
+    character <emphasis>although you can force it to be treated as
+    such</emphasis>.  In order to dereference a C pointer and modify
+    the value of the variable the <userinput>*</userinput> notation is
+    used and this is reflected in the declaration of a pointer:</para>
+
+<programlisting>
+char *str;
+int  *x;
+double *y;
+</programlisting>
+
+    <para>This notation indicates that since, for example,
+    <varname>*x</varname> is an integer then <varname>x</varname>
+    itself must therefore be a pointer to an integer. An alternative
+    reading is to think of <varname>x</varname> as a variable of type
+    <type>int *</type> which is a pointer to an integer. A function
+    that multiplies a variable by three could be implemented as:</para>
+
+<programlisting>
+void treble ( int * value ) {
+    *value *= 3;
+}
+</programlisting>
+
+    <para>Here the input variable is declared as a pointer and the
+    value in the variable is multiplied by three by dereferencing the
+    pointer. This could be called as follows:</para>
+
+    <programlisting>
+int number = 5;
+treble( &amp;number );
+</programlisting>
+
+    <para>where we use an ampersand to indicate that we want to take
+    the memory address of <varname>number</varname> and pass it to the
+    function rather than simply passing in the value. The Perl
+    equivalents would be:</para>
+
+    <programlisting>
+$number = 5;
+&amp;treble( \$number );
+
+sub treble {
+  my $value = shift;
+  $$value *= 3;
+}
+</programlisting>
+
+    <para>To summarise, <varname>&amp;variable</varname> is used to
+    retrieve the memory address and <varname>*variable</varname> is
+    used to find the thing pointed to by the memory address stored in
+    the variable.</para>
+
+    <para>There are some important differences between Perl references
+    and C pointers.  In Perl the reference can only be dereferenced
+    and once dereferenced behaves as the original Perl data
+    type. Generally, in C the memory address can be examined and
+    modified. Modifying pointers can lead to errors though since bad
+    things can happen if the pointer does not point to a valid
+    location in memory. Additionally, a C pointer simply contains a
+    memory address therefore from that pointer it is not possible to
+    determine whether it points to an array of variables or a single
+    variable.</para>
+
+    <para>A special type of pointer is a pointer to a void
+    (<varname>void *</varname>).  This simply indicates to the
+    compiler that the contents are a pointer but we do not care what
+    type of pointer it contains. This is very useful when designing
+    data structures that are designed to be extensible or contain data
+    of type that is not known until the program is run.</para>
+
+    <sect2 id="cadv.pointers.arrays">
+      <title>Pointers and Arrays</title>
+
+      <para>In Perl if you need to pass an array into a subroutine you
+      usually do it by taking a reference to the array and storing it
+      in a Perl scalar variable. Once the reference is stored in a
+      scalar it must be dereferenced in order to retrieve the original
+      variable:</para>
+
+<programlisting>
+&amp;foo( \@bar, \%baz );
+
+sub foo {
+  my ($refArr, $refHash) = @_;
+  $refArr->[3] = "foo";
+  $refHash->{"bar"} = "foo";
+}
+</programlisting>
+
+      <para>In C the equivalent of this reference is a pointer. When
+      an array is used in a context expecting a pointer, the pointer
+      to the first element is used automatically. This can be seen in
+      <xref linkend="cadv.pntr.arrequiv"> where an array is declared
+      normally but is passed to another function as a pointer and also
+      treated as a pointer by <function>printf</function>.</para>
+
+      <example id="cadv.pntr.arrequiv">
+	<title>Equivalence of arrays and pointers</title>
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="4" id="cadv.pntr.arreq.fooarr">
+	    <area coords="8" id="cadv.pntr.arreq.foopntr">
+	    <area coords="13" id="cadv.pntr.arreq.decl">
+	    <areaset coords="0" id="cadv.pntr.arreq.call">
+	      <area coords="15" id="cadv.pntr.arreq.callfooarr">
+	      <area coords="16" id="cadv.pntr.arreq.callfoopntr">
+	    </areaset>
+	    <area coords="18" id="cadv.pntr.arreq.prntfooarr">
+	    <area coords="19" id="cadv.pntr.arreq.prntfoopntr">
+	  </areaspec>
+<programlisting>
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+
+void foo_as_array ( int array[] ) {
+  array[0] = 1;
+}
+
+void foo_as_pntr ( int * array ) {
+  array[1] = 2;
+}
+
+int main () {
+  int array[5];
+
+  foo_as_array( array );
+  foo_as_pntr( array );
+
+  printf("First  element is %d\n", array[0]);
+  printf("Second element is %d\n", *(array+1) );
+  
+  return EXIT_SUCCESS;
+}
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="cadv.pntr.arreq.fooarr">
+	      <para>This function has a single argument that is
+	      declared explicitly as an integer array. The empty
+	      square brackets indicate that the size of the array is
+	      not known.</para>
+	    </callout>
+	    <callout arearefs="cadv.pntr.arreq.foopntr">
+	      <para>This function has a single argument that is
+	      declared simply as a pointer to an integer. Note that
+	      this does not distinguish between a pointer to a single
+	      integer or a pointer from an actual array (and the
+	      compiler doesn't care either).</para>
+	    </callout>
+	    <callout arearefs="cadv.pntr.arreq.decl">
+	      <para>Declare an integer array with 5 elements but do
+	      not populate it.</para>
+	    </callout>
+	    <callout arearefs="cadv.pntr.arreq.call">
+	      <para>Both routines are called with the same syntax
+	      regardless of whether the function is expecting a
+	      pointer or an array.</para>
+	    </callout>
+	    <callout arearefs="cadv.pntr.arreq.prntfooarr">
+	      <para>Print the value of the first array element
+	      using standard array syntax.</para>
+	    </callout>
+	    <callout arearefs="cadv.pntr.arreq.prntfoopntr">
+	      <para>Print the value of the second element. Here we use
+	      pointer syntax to retrieve the second value. In fact,
+	      the method we used first to retrieve element
+	      <userinput>n</userinput> from an array,
+	      <userinput>array[n]</userinput>, is functionally
+	      equivalent to incrementing the pointer to the start of
+	      the array by <userinput>n</userinput> and dereferencing
+	      the result: <userinput>*(array+n)</userinput>. This
+	      works because the compiler knows how many bytes to
+	      increment the pointer because it knows the size of each
+	      type.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+      </example>
+
+      <para>A key difference between a real C array and a pointer to
+      it is that the C compiler knows exactly how large an array is
+      but does not know the amount of memory that a pointer refers
+      to. This can be demonstrated in the following:</para>
+
+      <programlisting>
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+
+int main () {
+  int array[5];
+  int *pntr;
+
+  printf("Size of array: %d bytes\n",sizeof(array));
+  printf("Size of array: %d elements\n",sizeof(array)/sizeof(int));
+  
+  pntr = array;
+  printf("Size of pointer: %d bytes\n", sizeof(pntr));
+
+  return EXIT_SUCCESS;
+}
+</programlisting>
+
+      <para>which gives the following output:</para>
+
+      <screen>
+Size of array: 20 bytes
+Size of array: 5 elements
+Size of pointer: 4 bytes
+</screen>
+
+      <para>In general though, this ability to determine the size of
+      an array using <function>sizeof</function> is not that useful
+      since you only ever use arrays of unknown size when they have
+      been created dynamically (in which case
+      <function>sizeof</function> is irrelevant). <xref
+      linkend="cadv.mem"> contains more details on how to allocate
+      memory for arrays.</para>
+
+    </sect2>
+
+</sect1>
+
+<sect1 id="cadv.strings">
+    <title>Strings</title>
+
+    <para>As mentioned previously a string in C is treated as an array
+    of characters. In general, a <type>char</type> is a single
+    character and a <type>char *</type> is a pointer to an array of
+    characters<footnote><para>A character is not necessarily a single
+    byte. This is true in ASCII but not in
+    UNICODE <remark>Are we going to expand on this?</remark></para></footnote>. Since a C compiler does not know how
+    many characters are contained in a particular piece of memory that
+    is being referenced the convention in C is that a special
+    character value is used to indicate the end of a
+    string<footnote><para>This leads to problems when linking Perl via
+    C to languages that do not use this particular convention. Fortran
+    is a popular example where the compiler does know how long each
+    string is and therefore does not need a special string termination
+    character</para></footnote>.  This string termination character is
+    character <literal>\0</literal> (the character with value 0 in the
+    character set [<userinput>chr(0)</userinput> in Perl] not
+    character zero [<userinput>ord(0)</userinput> in Perl]) and is
+    known as the NUL character. <xref linkend="cadv.fig.cstr"> shows a
+    simple example of string manipulation using a pointer and a Perl
+    translation. The example shows that in Perl a dereferenced
+    reference is no different to the original (the example would be
+    identical if <varname>$$b</varname> was replaced with
+    <varname>$a</varname> throughout) and that a string in Perl is a
+    single entity whereas in C it is a group of characters.</para>
+
+<figure id="cadv.fig.cstr">
+<title>String manipulation</title>
+<mediaobject>
+<imageobject>
+<imagedata fileref="hello_c.eps" format="eps">
+</imageobject>
+<imageobject>
+<imagedata fileref="hello_c.gif" format="gif">
+</imageobject>
+<caption>
+
+<programlisting>
+$a = "hello";
+$b = \$a;
+substr($$b, 0, 1) = 'm';
+substr($$b, 3, 1) = 'd';
+$a = substr($$b, 0,4);
+</programlisting>
+
+
+<para>
+Example of how a string can be manipulated a character at a
+time using pointers along with a somewhat contrived  Perl equivalent 
+since perl manipulates strings but C manipulates characters.
+</para>
+</caption>
+</mediaobject>
+
+</figure>
+
+<sect2 id="cadv.stringarr">
+<title>Arrays of strings</title>
+
+<para>
+Unlike numeric arrays where multi-dimensional arrays are a contiguous
+block of memory (since a single number is always represented by a
+fixed number of bytes), arrays of strings are arrays of pointers to
+strings. The strings themselves can be in completely unrelated areas
+of memory.  A pointer to an array of pointers to chracters is
+represented by the type <type>char**</type>. If the variable
+<varname>x</varname> is a <type>char**</type>, <varname>*x</varname>
+is a pointer to a string and <type>**x</type> is the single
+character at the start of the string. This is represented graphically
+in <xref linkend="cadv.fig.cstrstr">.</para>
+
+      <figure id="cadv.fig.cstrstr">
+	<title>Arrays of strings</title>
+	<mediaobject>
+	  <imageobject>
+	    <imagedata fileref="charstarstar.eps" format="eps">
+	  </imageobject>
+	  <imageobject>
+	    <imagedata fileref="charstarstar.png" format="png">
+	  </imageobject>
+	  <caption>
+	    <para>The memory organization of an array of strings. On
+	    the left we have a simple pointer. This pointer (a
+	    <type>char**</type>) points to an array of pointers (shown
+	    in the middle). These pointers are of type
+	    <type>char*</type> and point to the first character in
+	    each string. We use the NULL at the end of the pointer
+	    array to tell us where the end of the array is.</para>
+	  </caption>
+	</mediaobject>
+      </figure>
+
+<para>As a simple example, of using a <type>char**</type> we can make
+use of the Unix environment. The environment is available to
+programmers as an array of strings. For example, if we wanted to write
+a small program to print our current environment (similar to the
+<command>printenv</command> shell command) we could do something like
+this:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="3" id="cadv.strarr.environ">
+	  <area coords="7" id="cadv.strarr.cpenv">
+	  <area coords="9" id="cadv.strarr.loop">
+	</areaspec>
+      <programlisting>
+#include &lt;stdio.h&gt;
+
+extern char** environ;
+
+int main () {
+  int i;
+  char **array = environ;
+
+  while (*array) {
+    printf("%s\n", *array);
+    array++;
+  }
+
+  return(0);
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="cadv.strarr.environ">
+	    <para><varname>environ</varname> is a special variable
+	    provided by the system and populated when the process
+	    starts. The <type>extern</type> declaration tells the
+	    compiler that we are using a variable declared in some
+	    other file.</para>
+	  </callout>
+	  <callout arearefs="cadv.strarr.cpenv">
+	    <para>Here we declare a new <type>char**</type> and copy
+	    the pointer from the environment array. We do this so that
+	    we can manipulate the pointer without affecting the base
+	    pointer.</para>
+	  </callout>
+	  <callout arearefs="cadv.strarr.loop">
+	    <para>This <function>while</function> loop continues until
+	    <varname>*array</varname> evaluates to false. Since
+	    <varname>*array</varname> is itself a pointer this only
+	    happens when <varname>*array</varname> is NULL. Each time round
+	    the loop we print out the string associated with the
+	    current pointer value and then increment the pointer so
+	    that we move to the next element in the array. When we
+	    reach the end of the array we hit the null and terminate
+	    the loop.</para>
+	  </callout>
+	</calloutlist>
+</programlistingco>
+
+</sect2>
+
+  </sect1>
+
+
+  
+
+  <sect1 id="cadv.struct">
+    <title>Structures</title>
+
+    <para>
+In many cases it is desirable to group related data into a single unit
+that can be passed easily into subroutines. In perl this is achieved
+by using a hash or an array which can themselves contain references to
+any of the standard perl data types and can even be blessed into
+classes and treated as objects. In C arrays can only contain variables
+of the same type<footnote><para>although in principle you could have
+an array of pointers to items of different type in practice it is
+difficult to keep track of which element points to which data
+type.</para></footnote> and an alternative method is provided for
+grouping data into structures that can contain named elements similar
+to a Perl hash.  These structures, declared using the
+<function>struct</function> keyword, can be given an arbritrary type
+and can also include any other variable type:
+</para>
+
+<programlisting>
+struct person {
+   double income; /* A double precision number */
+   int    age;    /* An integer */
+   char*  name;   /* Pointer to a character string */
+};
+
+struct survey {
+   struct person* respondent; /* Pointer to a structure of type person */
+   float length;       /* Floating point number (single precision) */
+   int* answers;       /* Pointer to an array of integers */
+};
+</programlisting>
+
+    <para>Once a structure has been declared variables can be declared
+    of that type in the normal way:</para>
+
+<programlisting>
+struct person mystruct; /* mystruct is now a variable of type person */
+struct survey* mypoint; /* mypoint is now a pointer to a struct of type survey */
+</programlisting>
+
+    <para>A common trick to save typing is to instruct the compiler to
+    use an alias rather than having to type <userinput>struct
+    person</userinput> all the time. The <function>typedef</function>
+    command allows any variable type to be aliased to another:</para>
+
+<programlisting>
+typedef int myint;  /* myint is now identical to an int declaration */
+typedef struct person PERSON;  /* PERSON is now an alias for struct person */
+struct person mystruct; /* mystruct declared as a struct person */
+PERSON mystruct;        /* Same as previous line */
+</programlisting>
+
+    <para>This technique is used a lot in the Perl source code where
+    you very rarely see an explicit <type>struct</type>. All struct
+    accesses are done with aliases (and even more commonly done with C
+    pre-processor macros).</para>
+
+    <para>Accessing the members of the structure depends on whether
+    you have a pointer to the structure or have declared the structure
+    variable directly. The following example shows C struct accessors
+    with a corresponding perl hash accessor:</para>
+
+<programlisting>
+mystruct.age = 5; /* Set member 'age' to 5 */
+$mystruct{'age'} = 5;  # perl
+
+mypoint->length = 5.234; /* Set member y by dereferencing pointer */
+$mypoint->{'length'} = 5.234; # Perl dereference
+
+(*mypoint).length = 5.234; /* Same as previous line */
+$$mypoint{'length'} = 5.234; # Alternative form of dereferencing
+</programlisting>
+
+    <para>The main difference between a struct and a hash is that all
+    the members of a struct must be declared beforehand and no extra
+    members can be created as the program executes. This is because a
+    struct, like an array, is a contiguous block of memory of a fixed
+    size. Even if a particular element of a struct is not initialised
+    it will still take up the same amount of memory as a fully
+    initialised struct. Our <type>struct person</type> declared above
+    consists of a <type>double</type>, an <type>int</type> and a
+    pointer to a string. On a normal 32-bit system this will most
+    likely take up 8+4+4=16 bytes of memory; the standard
+    <function>sizeof</function> can be used to determine how much
+    memory the structure actually uses (in some cases a compiler will
+    pad the structure with extra bytes to make it a convenient size
+    for the underlying architecture). Structures must be well-defined
+    like this so that the compiler can decide on how much memory to
+    allocate to each one. This is all clearly different from a perl
+    hash where keys can be added at any time and the memory
+    requirement is not fixed. Details on how hashes are implemented in
+    C to overcome any restriction of this kind can be found in <xref
+    linkend="perlvar.hashes">.<footnote><para>Additionally as a
+    structure is represented by a single contiguous block of memory
+    (just like arrays) it is possible to simply step the required
+    number of bytes into a structure to extract out information but
+    this is not recommended and can lead to confusion and difficulty
+    in porting the code to other platforms; always use the standard
+    accessor techniques.</para></footnote></para>
+
+    <para>In a similar manner to arrays, it is possible to initialise
+    a structure in one statement:</para>
+
+    <programlisting>
+struct example {
+  double a;
+  float b;
+  int c;
+};
+
+struct example eg = { 52.8 , 65.4, 40 };
+</programlisting>
+
+    <para>This provides a useful shorthand way of configuring
+    structures without having to address each member by name. The
+    curly brackets effectively packing the data into a single block of
+    memory and is exactly the same as using the Perl
+    <function>pack</function>:</para>
+
+    <programlisting>
+$packed = pack("dfi", 52.8,65.4,40);
+</programlisting>
+
+  </sect1>
+
+  <sect1 id="cadv.fileio">
+    <title>File I/O</title>
+
+    <para>In C, just as in Perl<footnote><para>simply because Perl
+    provides interfaces to both types of I/O in the standard C
+    library</para></footnote>, there are two approaches to handling
+    input from and output to external files<footnote><para>This
+    includes sockets and devices. On Unix all devices are treated as
+    files.</para></footnote>:</para>
+
+    <itemizedlist>
+      <listitem>
+	<para>Stream-based I/O provides a high level interface,
+	specifically providing buffering facilities and the ability to
+	move forwards and backwards within a file. Buffered I/O is
+	important for performance reasons (when writing to real
+	hardware it is usually more efficient to store up writes to a
+	disk into large chunks rather than sending a byte at a
+	time). By default perl filehandles use streams and the
+	buffering can be turned on or off using the special variable
+	<varname>$|</varname> (the default is to turn on buffering
+	leading to much confusion from people the first time they
+	write a CGI script!). In C a stream is represented by a
+	<varname>FILE*</varname> (a pointer to a FILE). This is an
+	opaque structure since you never look inside the structure -
+	that is left to the low level implementation in the C library
+	itself. To open a stream you can use
+	<function>fopen</function>:</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>FILE *<function>fopen</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) -->
+	    <paramdef>const char *<parameter>path</parameter></paramdef>
+	    <paramdef>const char *<parameter>mode</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	
+	<para>and to print to a file you can use
+	<function>fprintf</function></para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>int <function>fprintf</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) -->
+	    <paramdef>FILE *<parameter>stream</parameter></paramdef>
+	    <paramdef>const char *<parameter>format</parameter></paramdef>
+	    <paramdef>...</paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>To close it you use, predictably,
+	<function>fclose</function>:</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>int <function>fclose</function></funcdef>
+	    <!-- one of (PARAMDEF VARARGS VOID) -->
+	    <paramdef>FILE *<parameter>stream</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>These are very similar to the corresponding perl
+	routines, <function>open</function>,
+	<function>printf</function> and
+	<function>close</function>.</para>
+
+      </listitem>
+
+      <listitem>
+	<para>A lower level approach to I/O (at least on UNIX-like
+	systems) is to use <firstterm>file
+	descriptors</firstterm>. These are simple integers (you can
+	get the file descriptor from a perl filehandle using the
+	<function>fileno</function> routine). File descriptors can be
+	used for non-buffered I/O and are especially useful for socket
+	communication. The C functions <function>open</function>,
+	<function>close</function>, <function>read</function> and
+	<function>write</function> are direct equivalents of the Perl
+	functions <function>sysopen</function>,
+	<function>close</function>, <function>sysread</function> and
+	<function>syswrite</function>. Just as in Perl, you should not
+	mix stream-based I/O with file descriptor I/O on the same file
+	handle.</para>
+      </listitem>
+    </itemizedlist>
+
+    <para>In general all of the perl file I/O operations have
+    analogues in the C library either as stream-based functions or
+    functions using file descriptors (the
+    <filename>perlfunc</filename> documentation is careful to
+    distinguish between the two).</para>
+
+    <remark>Reviewer asked for an explicit example here. I was holding
+    of on this because the commands are so close to the standard perl
+    functions.</remark>
+
+  </sect1>
+
+
+  <sect1 id="cadv.mem">
+    <title>Memory Management</title>
+
+    <para>So far we have explained the different variable types and
+    always made sure that our program has specified the amount of
+    memory required to use them. In <xref linkend="cadv.arr.eg"> we
+    specified the number of elements for each array. The memory for
+    these variables is allocated by the compiler which works out the
+    total amount of memory required by the program. Unfortunately,
+    sometimes you can not know at compile time how much memory you
+    program will need. For example, if you are writing some image
+    processing software you may not know how big an image you will
+    need to process. One solution, required if you use a language such
+    as Fortran77<footnote><para>although most modern implementations
+    of Fortran77 ignore the restriction</para></footnote>, is to make
+    an inspired guess of the maxium image size you wish to process and
+    hard-wire the dimensions into your program. This will work but has
+    two problems:</para>
+
+    <itemizedlist>
+      <listitem>
+	<para>If you need to process larger images you will need to
+	recompile your program (presumably this is easy because you
+	have specified the dimensions in a header file?)</para>
+      </listitem>
+      <listitem>
+	<para>Even if you are processing small images the program will
+	require the same amount of memory as it uses for large
+	images.</para>
+      </listitem>
+    </itemizedlist>
+
+    <para>Clearly an alternative approach is required. What we really
+    want to do is to determine the image size that we are intending to
+    process and then allocate that memory when the program is
+    running.</para>
+
+    <sect2 id="cadv.mem.run">
+      <title>Allocating memory at runtime</title>
+
+    <para>The main C function for <emphasis>dynamically</emphasis>
+    allocating memory is <function>malloc</function>:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void * <function>malloc</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>size_t <parameter>size</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <para>The argument specifies the number of bytes required and
+      the function returns a pointer which can be type-cast to the
+      correct type. Recall that if you declare a pointer variable, you
+      have to make sure that it points to some allocated memory. So
+      far we have done this by obtaining the pointer from some other
+      variable. For example:</para>
+
+      <programlisting>
+  char * pointer_to_char;
+  char a_string[4];
+  int an_integer;
+  int * pointer_to_int;
+
+  pointer_to_char = a_string;
+  pointer_to_int = &amp;an_integer;
+</programlisting>
+
+      <para>With dynamic memory allocation we can do this (the
+      prototype for <function>malloc</function> can be found in
+      <filename>stdlib.h</filename>):</para>
+
+      <programlisting>
+  #include &lt;stdlib.h&gt;
+  char * pointer_to_char;
+
+  pointer_to_char = malloc(4);
+</programlisting>
+
+      <para>Here we have requested 4 bytes of memory and we have
+      stored the pointer returned by <function>malloc</function> in
+      the variable <varname>pointer_to_char</varname>. It is important
+      to realise here that the memory has been allocated but not
+      necessarily initialised (the contents will be undefined). You
+      are responsible for storing information in that memory.</para>
+
+      <para>The downside of dynamic memory allocation in C is that the
+      programmer is responsible for giving the memory back when it is
+      no longer required. If we keep on requesting memory but never
+      give it back we will rapidly run out of resources. This is known
+      as a <firstterm>memory leak</firstterm>. C provides the
+      <function>free</function> to allow you to return memory to the
+      system:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void  <function>free</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>void * <parameter>ptr</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <para>This function takes a single pointer argument and will
+      free the memory at that address. This memory must have been
+      allocated by a call to <function>malloc</function> (or the
+      related functions <function>calloc</function> and
+      <function>realloc</function>) and care should be taken that it
+      is not called twice with the same pointer value (strange things
+      may happen since the system may have already given that memory
+      to something else!).</para>
+
+      <para>Memory management is one of the hardest things to get
+      right in C. With a large program containing many dynamic memory
+      allocations it is very hard to guarantee that the memory will be
+      freed correctly in all cases. One of the key advantages of Perl,
+      Java and others is that they handle all the memory allocation
+      and freeing, allowing the programmer to focus on core
+      functionality of the program.</para>
+
+    </sect2>
+
+
+    <sect2 id="cadv.mem.chg">
+      <title>Altering the size of memory</title>
+
+      <para>Occasionally you may realise that the memory you requested
+      was not enough for the task in hand: maybe you want to extend an
+      array so that it can hold more elements, maybe you want to
+      extend a string. The <emphasis>obvious</emphasis> approach is to
+      allocate a new string of the correct size, copy the contents
+      from the first string and then free the memory associated with
+      it. This is painful but luckily the standard C library comes
+      with a function that will do this for you:</para>
+
+      <funcsynopsis>
+	<!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	<funcprototype>
+	  <funcdef>void  * <function>realloc</function></funcdef>
+	  <!-- one of (PARAMDEF VARARGS VOID) -->
+	  <paramdef>void * <parameter>ptr</parameter></paramdef>
+	  <paramdef>size_t <parameter>bytes</parameter></paramdef>
+	</funcprototype>
+      </funcsynopsis>
+
+      <para>This function will resize the available memory pointed to
+      by <varname>ptr</varname>.  The original contents of the memory
+      will be retained and any new memory will be unintialized. If
+      <varname>bytes</varname> is less than the previous size then the
+      additional memory will be freed. <function>realloc</function>
+      returns a new memory address which will not necessarily be the
+      same as that stored in <varname>ptr</varname>. You should always
+      use the return value rather than assuming that you will be
+      getting memory at the same location.</para>
+
+      <note>
+	<para>Recall that arguments in C are passed by value. Since the
+	content of <varname>ptr</varname> is passed in as a memory
+	address the function will not be able to modify the contents
+	of <varname>ptr</varname> in the calling routine. This could
+	have been overcome by passing in a pointer to the pointer (!) 
+	but the designers of the interface for
+	<function>realloc</function> decided to return the new pointer
+	directly as a return argument.</para>
+
+      <programlisting>
+ptr = realloc( ptr, nbytes );
+</programlisting>
+
+      </note>
+
+      <para>As with all memory allocation routines. Do not forget to
+      check the returned pointer to make sure it is non-NULL. All
+      these routines return null pointers if the memory can not be
+      allocated.</para>
+
+    </sect2>
+
+    <sect2 id="cadv.mem.manip">
+      <title>Manipulating Memory</title>
+
+      <para>Now that you have your memory allocated, what can you do
+      with it? If you want to copy it to another variable (for example
+      to copy the contents of a structure before it is reused) you can
+      use <function>memcpy</function> (use <function>memmove</function> if
+      the memory destination lies within the chunk of data that is
+      being copied).</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <areaset coords="1" id="memcpy.includes">
+	    <area coords="1" id="memcpy.inc.stdlib">
+	    <area coords="2" id="memcpy.inc.stdio">
+	    <area coords="3" id="memcpy.inc.string">
+	  </areaset>
+	  <area coords="5" id="memcpy.decl.struct">
+	  <area coords="11" id="memcpy.main">
+	  <areaset coords="13" id="memcpy.decl">
+	    <area coords="13" id="memcpy.decl.char">
+	    <area coords="14" id="memcpy.decl.person">
+	    <area coords="15" id="memcpy.decl.person.ptr">
+	  </areaset>
+	  <area coords="17" id="memcpy.alloc">
+	  <area coords="18" id="memcpy.cpy">
+	  <area coords="20" id="memcpy.test.other.income">
+	  <area coords="21" id="memcpy.test.someone">
+	  <area coords="24" id="memcpy.test.someone.name">
+	  <area coords="25" id="memcpy.test.other">
+	  <area coords="28" id="memcpy.free">
+
+	</areaspec>
+	<programlisting>
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+typedef struct {
+   double income; /* A double precision number */
+   int    age;    /* An integer */
+   char*  name;   /* Pointer to a character string */
+} person;
+
+int main () {
+
+  char name[6] = "fred";
+  person someone = { 20000.0, 5, name };
+  person *other;
+
+  other = malloc(sizeof(*other));
+  memcpy(other, &amp;someone, sizeof(*other));
+
+  other->income = 0.0;
+  printf("Someone: %d, %6.0f, %s\n", someone.age, someone.income,
+	 someone.name);
+
+  strcpy(someone.name, "wilma");
+  printf("Other:   %d, %6.0f, %s\n", other->age, other->income,
+	 other->name);
+
+  free(other);
+  return(0);
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="memcpy.includes">
+	    <para>These include files declare the prototypes for
+	    <function>malloc</function>, <function>printf</function>,
+	    <function>memcpy</function> and
+	    <function>strcpy</function></para>
+	  </callout>
+	  <callout arearefs="memcpy.decl.struct">
+	    <para>Here we create an anonymous structure and
+	    simultaneously typedef it to a <type>person</type>.</para>
+	  </callout>
+	  <callout arearefs="memcpy.main">
+	    <para>This is the standard C main routine but here we do
+	    not declare any arguments since we are not interested in
+	    them.</para>
+	  </callout>
+	  <callout arearefs="memcpy.decl">
+	    <para>Variable declarations. We allocate a string,
+	    initialise a <type>person</type> structure (that includes
+	    the previously declared string) and declare a pointer to a
+	    <type>person</type>.</para>
+	  </callout>
+	  <callout arearefs="memcpy.alloc">
+	    <para>Allocate memory for a new structure. We determine
+	    the number of bytes required by using
+	    <function>sizeof</function>. One thing to note here is
+	    that we calculate the size of <varname>*other</varname>
+	    rather than <type>person</type>. Either approach would
+	    work but using the variable name rather than the type
+	    would allow for simpler editing if we were to change the
+	    type in a later version of the code.</para>
+	  </callout>
+	  <callout arearefs="memcpy.cpy">
+	    <para>Use <function>memcpy</function> to copy the contents
+	    of <varname>someone</varname> to the memory indicated by
+	    <varname>other</varname>. We must supply the size of the
+	    structure in bytes.</para>
+	  </callout>
+	  <callout arearefs="memcpy.test.other.income">
+	    <para>Set the income in <varname>other</varname> to zero.</para>
+	  </callout>
+	  <callout arearefs="memcpy.test.someone">
+	    <para>Print out the contents of the original structure.</para>
+	  </callout>
+	  <callout arearefs="memcpy.test.someone.name">
+	    <para>Set the name in the original structure to
+	    <quote>wilma</quote></para>
+	  </callout>
+	  <callout arearefs="memcpy.test.other">
+	    <para>Print out the contents of the copy.</para>
+	  </callout>
+	  <callout arearefs="memcpy.free">
+	    <para>Free the dynamically allocated memory.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>If we run the above program we get the following
+      output:</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>gcc -Wall memcpy.c -o memcpy</userinput>
+<prompt>%</prompt> <userinput>./memcpy</userinput>
+Someone: 5,  20000, fred
+Other:   5,      0, wilma
+</screen>
+
+      <para>So, when we modified the income of
+      <varname>other</varname> it did not affect the contents of
+      <varname>someone</varname> but when we modified the name of
+      <varname>someone</varname> it did affect
+      <varname>other</varname>. What is going on here? The answer lies
+      in the struct declaration. When the structure is copied,
+      everything is copied exactly to the destination. The first two
+      entries are simply numbers and are copied as such. If they are
+      modified the bytes change as we would expect without affecting
+      anything else. The third member is simply a pointer. This means
+      that the pointer is identical in both structures and if that
+      memory is modified both structures <quote>see</quote> the
+      change.</para>
+
+      <para>If you want to initialise an array with a default value
+      you can use the <function>memset</function> function (or you can allocate
+      the array using the <function>calloc</function> function which allocates
+      the memory and then sets all bits to zero)</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <areaset coords="1" id="mem.includes">
+	    <area coords="1" id="mem.inc.stdlib">
+	    <area coords="2" id="mem.inc.stdio">
+	    <area coords="3" id="mem.inc.string">
+	  </areaset>
+	  <area coords="5" id="mem.define">
+	  <area coords="7" id="mem.main">
+	  <area coords="10" id="mem.decl">
+	  <area coords="11" id="mem.alloc">
+	  <area coords="12" id="mem.set">
+	  <area coords="15" id="mem.test">
+	  <area coords="18" id="mem.free">
+	</areaspec>
+      <programlisting>
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+#define NELEM 10
+
+int main () {
+
+  int i;
+  int * array;
+  array = malloc(sizeof(int)*NELEM);
+  memset(array, 0, sizeof(int)*NELEM);
+
+  for (i=0; i&lt;NELEM; i++) {
+    printf("Index %d element %d\n",i, array[i]);
+  }
+
+  free(array);
+  return(0);
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="mem.includes">
+	    <para>These include files declare the prototypes for
+	    <function>malloc</function>, <function>printf</function>
+	    and <function>memset</function> respectively.</para>
+	  </callout>
+	  <callout arearefs="mem.define">
+	    <para>We declare the size of the array in a single place
+	    so that we don't need to rely on a bare number in the
+	    code. Remember that C arrays do not know their
+	    size.</para>
+	  </callout>
+	  <callout arearefs="mem.main">
+	    <para>As with the previous example this is the standard C
+	    main routine but we do not declare any arguments
+	    since we are not interested in them.</para>
+	  </callout>
+	  <callout arearefs="mem.decl">
+	    <para>Declare <varname>array</varname> as a pointer to an
+	    integer.</para>
+	  </callout>
+	  <callout arearefs="mem.alloc">
+	    <para>Allocate <varname>NELEM</varname> integers.  We
+	    multiply the number of elements by the number of bytes in
+	    each integer to determine the total number of bytes
+	    required.</para>
+	  </callout>
+	  <callout arearefs="mem.set">
+	    <para>Set each byte in the new array to zero.</para>
+	  </callout>
+	  <callout arearefs="mem.test">
+	    <para>Loop through each element of the array, printing it
+	    to the screen.</para>
+	  </callout>
+	  <callout arearefs="mem.free">
+	    <para>Free the memory.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>In some architectures, setting all bytes to zero does not
+      initialize all values to zero (since a number is represented by
+      multiple bytes). To be absolutely sure that you are initialising
+      the memory correctly an explict loop is probably the safest
+      solution.</para>
+
+    </sect2>
+
+    <sect2 id="cadv.mem.perl">
+      <title>Memory manipulation and Perl</title>
+
+      <remark>This is discussed to some extent in the chapter on perl
+      API and we could get away with moving this section straight into
+      that chapter. We want to describe these specially here because
+      they are the most common wrappers that are used by XS. They are
+      not the only ones and we may feel a need to include the others
+      listed in <filename>perlclib</filename> as well. If this becomes
+      an appendix we really need to have this stuff early on in the
+      book. Having it here as a summary is fine so long as there is a
+      ref to more explicit coverage.</remark>
+
+      <para>Having said all this, in the perl source code you will
+      never use any of the functions for memory allocation and
+      manipulation that we have described above. In the interests of
+      cross-platform portability and debugging support Perl uses
+      private definitions of these functions by providing C
+      pre-processor macros. The <function>New</function> may
+      eventually translate to a <function>malloc</function> but it
+      doesn't have to. If we are attempting to check for memory leaks
+      we may want to redefine <function>New</function> so that it
+      keeps track of the allocations and corresponding frees and a
+      macro makes this extremely simple. <xref
+      linkend="cadv.tab.malloc"> contains a list of the standard C
+      library functions and the Perl equivalents. In the table
+      <literal>t</literal> indicates a variable type,
+      <literal>p</literal> indicates a pointer, <literal>n</literal>
+      is a number and <literal>s</literal> is a
+      string. <literal>dst</literal>, <literal>src</literal> and
+      <literal>id</literal> indicate destination pointer, source
+      pointer and identification tag respectively. The
+      <literal>id</literal> could be used to track memory leaks
+      although it is not currently used in the Perl source.</para>
+
+      <table id="cadv.tab.malloc">
+	<title>Perl macros for memory manipulation</title>
+	<!-- one of (GRAPHIC MEDIAOBJECT TGROUP) -->
+	<tgroup cols="2">
+	  <tbody>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry>Perl source</entry>
+	      <entry>C library</entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>New</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>id</parameter></paramdef>
+		    <paramdef><parameter>p</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef>t* p = <function>malloc</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>n</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>Newz</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>id</parameter></paramdef>
+		    <paramdef><parameter>p</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef>t* p = <function>calloc</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>s</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>Renew</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>p</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef>p = <function>realloc</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>p</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>Safefree</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>p</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>free</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>p</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>Copy</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>memcpy</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>StructCopy</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>memcpy</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis> (structures only)</entry>
+	    </row>
+	    <row>
+	      <!-- one of (ENTRYTBL ENTRY) -->
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>Move</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		    <paramdef><parameter>t</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	      <entry><funcsynopsis>
+		  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+		  <funcprototype>
+		    <funcdef><function>memmove</function></funcdef>
+		    <!-- one of (PARAMDEF VARARGS VOID) -->
+		    <paramdef><parameter>dst</parameter></paramdef>
+		    <paramdef><parameter>src</parameter></paramdef>
+		    <paramdef><parameter>n</parameter></paramdef>
+		  </funcprototype>
+		</funcsynopsis></entry>
+	    </row>
+	  </tbody>
+	</tgroup>
+      </table>
+
+
+    </sect2>
+
+  </sect1>
+
+  <sect1>
+    <title>C Traps</title>
+
+    <remark>Still TBD.</remark>
+
+    <remark>What are we really going to put in here?</remark>
+  </sect1>
+
+
+  <sect1 id="cadv.summary">
+    <title>Summary</title>
+
+    <para>In this chapter we have learnt the following:</para>
+
+    <itemizedlist>
+      <listitem>
+	<para>Arguments are passed into functions by value. In order
+	to modify a variable in a function a pointer to the variable
+	must be used.</para>
+      </listitem>
+      <listitem>
+	<para>Arrays in C are simply blocks of memory that can be
+	addressed by a pointer. They can not be re-sized without
+	allocating more memory and, when dynamically allocated, they
+	do not know how long they are.</para>
+      </listitem>
+      <listitem>
+	<para>C has no native hashes, only fixed size structures.</para>
+      </listitem>
+      <listitem>
+	<para>C will not automatically allocate more memory as you
+	need it. You have to explicitly ask for more memory and you
+	have to make sure you give it back to the system when it is no
+	longer required.</para>
+      </listitem>
+    </itemizedlist>
+
+  </sect1>
+
+  <sect1 id="cadv.reading">
+    <title>Further reading</title>
+
+    <para>There are many books available on the C programming language
+    and we can not recommend all of them. The standard reference works
+    are Kernighan &amp; Ritchie's <quote>The C programming
+    language</quote> and Harbison &amp; Steele. <quote>C: A Reference
+    Manual</quote>. Also, all the library functions described here
+    have corresponding manual pages on most systems. The <ulink
+    url="http://www.eskimo.com/~scs/C-faq/faq.html">comp.lang.c
+    FAQ</ulink> is also useful.</para>
+
+    <para>Finally, the Perl wrappers for standard C functions are
+    described in the <filename>perlclib</filename> documentation that
+    comes with perl.</para>
+
+  </sect1>
+
+</chapter>
+
+

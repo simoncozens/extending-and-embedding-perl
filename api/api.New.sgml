@@ -1,0 +1,125 @@
+<sect3 id="api.New">
+    <title><function>New</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>void <function>New</function></funcdef>
+        <paramdef>int <parameter>id</parameter></paramdef>
+        <paramdef>void* <parameter>ptr</parameter></paramdef>
+        <paramdef>int <parameter>nitems</parameter></paramdef>
+        <paramdef><parameter> type </parameter></paramdef>
+      </funcprototype>
+
+      <funcprototype>
+        <funcdef>void <function>Newz</function></funcdef>
+        <paramdef>int <parameter>id</parameter></paramdef>
+        <paramdef>void* <parameter>ptr</parameter></paramdef>
+        <paramdef>int <parameter>nitems</parameter></paramdef>
+        <paramdef><parameter> type </parameter></paramdef>
+      </funcprototype>
+
+      <funcprototype>
+        <funcdef>void <function>Newc</function></funcdef>
+        <paramdef>int <parameter>id</parameter></paramdef>
+        <paramdef>void* <parameter>ptr</parameter></paramdef>
+        <paramdef>int <parameter>nitems</parameter></paramdef>
+        <paramdef><parameter> type </parameter></paramdef>
+        <paramdef><parameter> cast </parameter></paramdef>
+      </funcprototype>
+
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+
+	  <function>New</function> is the XS writer's interface to
+	  <function>malloc</function>, for allocating new memory. 
+	  Because Perl can opt to use its own memory management
+	  system, you should always use <function>New</function>
+	  rather than <function>malloc</function>.
+	</para>
+	<para>
+	  <function>Newz</function> is similar to
+	  <function>New</function>, but also ensures that the
+	  returned memory is filled with zero bytes. 
+	  <example>
+<title> Opening a DBM Database </title>
+<para>
+	      DBM databases are files storing key-value relationships,
+	      in the same way that hashes do. In fact, it's common
+	      practice in Perl to use a DBM database to store a hash
+	      so that its data can be saved and restored between calls
+	      to a Perl program. There are several different flavours
+	      of DBM, and one of them ("old DBM") stores its data in
+	      two files - a database called
+	      "<filename>birthdays</filename>" would be stored on disk
+	      as <filename>birthdays.dir</filename> and
+	      <filename>birthdays.pag</filename>. That's to say, the
+	      code responsible for opening the directory must catenate
+	      <literal>.dir</literal> and <literal>.pag</literal> onto
+	      the filename. Let's see how this is done, in
+	      <filename>ext/ODBM_File/ODBM_File.xs</filename> in the
+	      Perl sources.
+	    </para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.New.1">
+        <area coords="2" id="api.New.2">
+        <area coords="3" id="api.New.3">
+        <area coords="3" id="api.New.4">
+          </areaspec>
+          <programlisting>
+            New(0, tmpbuf, strlen(filename) + 5, char);
+            SAVEFREEPV(tmpbuf);
+            sprintf(tmpbuf,"%s.dir",filename);
+            if (stat(tmpbuf, &amp;PL_statbuf) < 0) {
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.New.1">
+          <para>
+		    First, we have to allocate memory for a temporary
+		    buffer to hold the filename plus the
+		    extension. It's five characters longer than the
+		    filename itself, and each element of the array is
+		    of type <type>char</type>. (Why five characters?
+		    "<literal>.dir</literal>" is four, plus the
+		    trailing zero to end a string.)
+        </para>
+        </callout>
+
+        <callout arearefs="api.New.2">
+          <para>
+		    <literal>SAVEFREEPV</literal> is a wonderfully
+		    nice way of not having to worry about freeing
+		    memory once you're used it. Perl has a stack
+		    called the "save stack" which holds values to be
+		    freed at the end of the current scope - for
+		    instance, Perl <literal>local</literal> SVs, or
+		    subroutine return values. The save stack can
+		    therefore be used to process any actions which
+		    must be done at the end of scope, and here it's
+		    being used to hold a string pointer (a
+		    <type>PV</type>) which will be freed at the end of
+		    scope. If you use <literal>SAVEFREEPV</literal> on
+		    your strings, Perl will clean them up for you.
+        </para>
+        </callout>
+
+        <callout arearefs="api.New.3">
+          <para>
+		    Next, we copy the filename followed by
+		    "<literal>.dir</literal>" into this new buffer to
+		    get the filename as it would be on disk...
+		  </para>
+		</callout>
+
+        <callout arearefs="api.New.4">
+          <para>
+		    And now we can test to see if the file actually
+		    exists.
+		  </para>
+		</callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+</para>
+    <para>See also: <xref linkend="api.Renew">, <xref linkend="api.Safefree"></para>
+      </sect3>

@@ -1,0 +1,40 @@
+<sect3 id="api.av.make">
+    <title><function>av_make</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>AV* <function>av_make</function></funcdef>
+        <paramdef>I32 <parameter>length</parameter></paramdef>
+        <paramdef>SV** <parameter>svp</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+	<para>
+	  <function>av_make</function> is a little used function which
+	  turns a C array of <type>SV</type>s into a new
+	  <type>AV</type>. The parameters are the number of elements
+	  in the array, and a pointer to the C array.
+	</para>
+	<example>
+	  <title> Copying an array </title>
+	  <para>
+	    <!-- Introduction to example -->
+
+	    <userinput>mod_perl</userinput> makes an ingenious use of
+	    this function to copy an array:
+	  </para>
+<programlisting>
+#define av_copy_array(av) av_make(av_len(av)+1, AvARRAY(av)) 
+</programlisting>
+	  <para>
+	    As we saw in <xref linkend="perlvar.arrays">,
+	    <function>AvARRAY(av)</function> points to the first
+	    element of the C array held in <varname>av</varname>;
+	    <function>av_len</function> (See <xref
+	    linkend="api.av.len">) returns the highest element in the
+	    array, so one more than that is the total number of
+	    elements. Passing these to <function>av_make</function>
+	    produces a new array with the same elements.
+	  </para>
+      </example>
+
+<!--    <para>See also: <xref linkend="api.a...">,</para> -->
+      </sect3>

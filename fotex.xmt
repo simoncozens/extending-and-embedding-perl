@@ -1,0 +1,1617 @@
+% $Id: //depot/Master/texmf/tex/xmltex/passivetex/fotex.xmt#60 $, $Date: 2001/06/29 $
+%
+% Copyright 2000 Sebastian Rahtz/Oxford University  
+%      <sebastian.rahtz@oucs.ox.ac.uk>
+%
+% Permission is hereby granted, free of charge, to any person obtaining
+% a copy of this software and any associated documentation files (the
+% ``Software''), to deal in the Software without restriction, including
+% without limitation the rights to use, copy, modify, merge, publish,
+% distribute, sublicense, and/or sell copies of the Software, and to
+% permit persons to whom the Software is furnished to do so, subject to
+% the following conditions:
+% 
+% The above copyright notice and this permission notice shall be included
+% in all copies or substantial portions of the Software.
+\DeclareNamespace{fotex}{http://www.tug.org/fotex}
+\DeclareNamespace{fo}{http://www.w3.org/1999/XSL/Format}
+\def\string@autoauto{autoauto}
+\XMLstring\file@urlprefix<>url(</>
+\XMLstring\file@prefix<>file://</>
+\XMLstring\file@shortprefix<>file:</>
+\XMLstring\prop@width<>proportional-column-width(1)</>
+\XMLstring\@staticafter<>xsl-after</>
+\XMLstring\@staticbefore<>xsl-before</>
+\XMLstring\@staticstart<>xsl-start</>
+\XMLstring\att@labelend<>label-end()</>
+\XMLstring\att@bodystart<>body-start()</>
+\XMLstring\att@NaN<>NaN</>
+\XMLstring\att@all<>all</>
+\XMLstring\att@always<>always</>
+\XMLstring\att@any<>any</>
+\XMLstring\att@auto<>auto</>
+\XMLstring\att@autoodd<>auto-odd</>
+\XMLstring\att@autoeven<>auto-even</>
+\XMLstring\att@endonodd<>end-on-odd</>
+\XMLstring\att@endoneven<>end-on-even</>
+\XMLstring\att@baseline<>baseline</>
+\XMLstring\att@blank<>blank</>
+\XMLstring\att@black<>black</>
+\XMLstring\att@centered<>centered</>
+\XMLstring\att@false<>false</>
+\XMLstring\att@first@starting@within@page<>first-starting-within-page</>
+\XMLstring\att@first<>first</>
+\XMLstring\att@even<>even</>
+\XMLstring\att@odd<>odd</>
+\XMLstring\att@lr@tb<>lr-tb</>
+\XMLstring\att@maximum<>maximum</>
+\XMLstring\att@maximumuniform<>maximum-uniform</>
+\XMLstring\att@medium<>medium</>
+\XMLstring\att@no<>no</>
+\XMLstring\att@no@limit<>no-limit</>
+\XMLstring\att@none<>none</>
+\XMLstring\att@normal<>normal</>
+\XMLstring\att@nowrap<>no-wrap</>
+\XMLstring\att@oddpage<>odd-page</>
+\XMLstring\att@page<>page</>
+\XMLstring\att@page@sequence<>page-sequence</>
+\XMLstring\att@pre<>pre</>
+\XMLstring\att@preserve<>preserve</>
+\XMLstring\att@relative<>relative</>
+\XMLstring\att@repeat<>repeat</>
+\XMLstring\att@replace<>replace</>
+\XMLstring\att@scroll<>scroll</>
+\XMLstring\att@scaletofit<>scale-to-fit</>
+\XMLstring\att@show<>show</>
+\XMLstring\att@smallcaps<>small-caps</>
+\XMLstring\att@solid<>solid</>
+\XMLstring\att@static<>static</>
+\XMLstring\att@sub<>sub</>
+\XMLstring\att@super<>super</>
+\XMLstring\att@transparent<>transparent</>
+\XMLstring\att@true<>true</>
+\XMLstring\att@tiny<>true</>
+\XMLstring\att@thin<>thin</>
+\XMLstring\att@thick<>thick</>
+\XMLstring\att@uniform<>uniform</>
+\XMLstring\att@use@font@metrics<>use-font-metrics</>
+\XMLstring\att@visible<>visible</>
+\XMLstring\att@xsl@any<>xsl-any</>
+\XMLstring\att@yes<>yes</>
+\XMLstring\leader@pattern@space<>space</>
+\XMLstring\leader@pattern@rule<>rule</>
+\XMLstring\leader@pattern@dots<>dots</>
+\XMLstring\rule@style@dashed<>dashed</>
+\XMLstring\rule@style@dotted<>dotted</>
+\XMLnamespaceattribute{fo}{media-usage}{\FOmediausage}{}
+%           The "media-usage" property is used to control 
+%           how the selected display medium is used to 
+%           present the page(s) specified by the stylesheet.
+\XMLnamespaceattribute{fo}{text-altitude}{\FOtextaltitude}{}
+%          Specifies the "height" to be used for the ascent
+%          above the dominant baseline
+\XMLnamespaceattribute{fo}{text-depth}{\FOtextdepth}{}
+%          Specifies the "depth" to be used for the descent
+%          below the domiant baseline.
+%auto | absolute | fixed | inherit
+%\XMLnamespaceattribute{fo}{absolute-position}{\FOabsoluteposition}{auto}
+%link | visited | active | hover | focus
+%\XMLnamespaceattribute{fo}{active-state}{\FOactivestate}{}
+%auto | <percentage> | <length> | inherit
+\XMLnamespaceattribute{fo}{alignment-adjust}{\FOalignmentadjust}{auto}
+%yes | no
+%\XMLnamespaceattribute{fo}{auto-restore}{\FOautorestore}{\inherit}
+%<angle> | [[ left-side | far-left | left
+%| center-left | center | center-right | right | far-right | right-side
+%] || behind ] | leftwards | rightwards | inherit
+%\XMLnamespaceattribute{fo}{azimuth}{\FOazimuth}{\inherit}
+%[<background-color> ||
+%<background-image>
+%|| <background-repeat> || <background-attachment> || <background-position>
+%| ]]inherit
+\XMLnamespaceattribute{fo}{background}{\FObackground}{}
+%scroll | fixed | inherit
+%\XMLnamespaceattribute{fo}{background-attachment}{\FObackgroundattachment}{scroll}
+%<color> | transparent | inherit
+\XMLnamespaceattribute{fo}{background-color}{\FObackgroundcolor}{transparent}
+%<uri> | none | inherit
+%\XMLnamespaceattribute{fo}{background-image}{\FObackgroundimage}{none}
+%[ [<percentage> | <length> ]{1,2} |
+% [ [top | center | bottom] || [left | center | right] ] ] | inherit
+%\XMLnamespaceattribute{fo}{background-position}{\FObackgroundposition}{0\% 0\%}
+%<percentage> | <length> |
+%left | center | right | inherit
+%\XMLnamespaceattribute{fo}{background-position-horizontal}{\FObackgroundpositionhorizontal}{0\%}
+%<percentage> | <length> |
+%top | center | bottom | inherit
+%\XMLnamespaceattribute{fo}{background-position-vertical}{\FObackgroundpositionvertical}{0\%}
+%repeat | repeat-x | repeat-y | no-repeat | inherit
+%\XMLnamespaceattribute{fo}{background-repeat}{\FObackgroundrepeat}{repeat}
+%baseline | before-edge
+%| text-before-edge | middle | after-edge
+%| text-after-edge | ideographic | alphabetic | hanging | mathematical
+%| inherit
+%\XMLnamespaceattribute{fo}{baseline-identifier}{\FObaselineidentifier}{}
+%baseline | sub | super | <percentage> | <length> | inherit
+\XMLnamespaceattribute{fo}{baseline-shift}{\FObaselineshift}{baseline}
+%blank | not-blank | any | inherit
+\XMLnamespaceattribute{fo}{blank-or-not-blank}{\FOblankornotblank}{any}
+%auto | <length> | <percentage> | <length-range> | inherit
+%\XMLnamespaceattribute{fo}{block-progression-dimension}{\FOblockprogressiondimension}{auto}
+%[ <border-width> || <border-style> || <color> ] | inherit
+\XMLnamespaceattribute{fo}{border}{\FOborder}{}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-after-color}{\FOborderaftercolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-after-style}{\FOborderafterstyle}{none}
+%<border-width> | <length-conditional> | inherit
+\XMLnamespaceattribute{fo}{border-after-width}{\FOborderafterwidth}{medium}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-before-color}{\FOborderbeforecolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-before-style}{\FOborderbeforestyle}{none}
+%<border-width> | <length-conditional> | inherit
+\XMLnamespaceattribute{fo}{border-before-width}{\FOborderbeforewidth}{medium}
+%[ <border-top-width> || <border-style> || <color> ] | inherit
+\XMLnamespaceattribute{fo}{border-bottom}{\FOborderbottom}{}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-bottom-color}{\FOborderbottomcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-bottom-style}{\FOborderbottomstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-bottom-width}{\FOborderbottomwidth}{medium}
+%collapse | separate | inherit
+\XMLnamespaceattribute{fo}{border-collapse}{\FObordercollapse}{\inherit}
+%<color>{1,4} | transparent | inherit
+\XMLnamespaceattribute{fo}{border-color}{\FObordercolor}{black}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-end-color}{\FOborderendcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-end-style}{\FOborderendstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-end-width}{\FOborderendwidth}{medium}
+%[ <border-top-width> || <border-style> || <color> ] | inherit
+\XMLnamespaceattribute{fo}{border-left}{\FOborderleft}{}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-left-color}{\FOborderleftcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-left-style}{\FOborderleftstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-left-width}{\FOborderleftwidth}{medium}
+%[ <border-top-width> || <border-style> || <color> ] | inherit
+\XMLnamespaceattribute{fo}{border-right}{\FOborderright}{}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-right-color}{\FOborderrightcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-right-style}{\FOborderrightstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-right-width}{\FOborderrightwidth}{medium}
+%<length-bp-ip-direction> | inherit
+\XMLnamespaceattribute{fo}{border-separation}{\FOborderseparation}{\inherit}
+%<length> <length>? | inherit
+\XMLnamespaceattribute{fo}{border-spacing}{\FOborderspacing}{\inherit}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-start-color}{\FOborderstartcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-start-style}{\FOborderstartstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-start-width}{\FOborderstartwidth}{medium}
+%<border-style>{1,4} | inherit
+\XMLnamespaceattribute{fo}{border-style}{\FOborderstyle}{}
+%[ <border-top-width> || <border-style> || <color> ] | inherit
+\XMLnamespaceattribute{fo}{border-top}{\FObordertop}{}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{border-top-color}{\FObordertopcolor}{\FOcolor}
+%<border-style> | inherit
+\XMLnamespaceattribute{fo}{border-top-style}{\FObordertopstyle}{none}
+%<border-width> | inherit
+\XMLnamespaceattribute{fo}{border-top-width}{\FObordertopwidth}{medium}
+%<border-width>{1,4} | inherit
+\XMLnamespaceattribute{fo}{border-width}{\FOborderwidth}{}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{bottom}{\FObottom}{auto}
+%auto | column | page | even-page | odd-page | inherit
+\XMLnamespaceattribute{fo}{break-after}{\FObreakafter}{auto}
+%auto | column | page | even-page | odd-page | inherit
+\XMLnamespaceattribute{fo}{break-before}{\FObreakbefore}{auto}
+%before | after | start | end | top | bottom | left | right | inherit
+\XMLnamespaceattribute{fo}{caption-side}{\FOcaptionside}{\inherit}
+%<name>
+\XMLnamespaceattribute{fo}{case-name}{\FOcasename}{}
+%<string>
+\XMLnamespaceattribute{fo}{case-title}{\FOcasetitle}{}
+%<character>
+\XMLnamespaceattribute{fo}{character}{\FOcharacter}{}
+%start | end | left | right | both | none | inherit
+\XMLnamespaceattribute{fo}{clear}{\FOclear}{none}
+%<shape> | auto | inherit
+\XMLnamespaceattribute{fo}{clip}{\FOclip}{auto}
+%<color> | inherit
+\XMLnamespaceattribute{fo}{color}{\FOcolor}{\inherit}
+%<name> | inherit
+\XMLnamespaceattribute{fo}{color-profile-name}{\FOcolorprofilename}{}
+%<number> | inherit
+\XMLnamespaceattribute{fo}{column-count}{\FOcolumncount}{1}
+%<length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{column-gap}{\FOcolumngap}{12.0pt}
+%<number>
+\XMLnamespaceattribute{fo}{column-number}{\FOcolumnnumber}{}
+%<length>
+\XMLnamespaceattribute{fo}{column-width}{\FOcolumnwidth}{}
+%<string> | auto
+%\XMLnamespaceattribute{fo}{content-type}{\FOcontenttype}{auto}
+
+%none | <country> | inherit
+\XMLnamespaceattribute{fo}{country}{\FOcountry}{\inherit}
+%<cue-before> || <cue-after> | inherit
+%\XMLnamespaceattribute{fo}{cue}{\FOcue}{}
+%<uri> | none | inherit 
+%\XMLnamespaceattribute{fo}{cue-after}{\FOcueafter}{none}
+%<uri> | none | inherit 
+%\XMLnamespaceattribute{fo}{cue-before}{\FOcuebefore}{none}
+%<length>
+%\XMLnamespaceattribute{fo}{destination-placement-offset}{\FOdestinationplacementoffset}{\z@}
+%ltr | rtl | inherit
+\XMLnamespaceattribute{fo}{direction}{\FOdirection}{\inherit}
+%auto | before | center | after | inherit
+\XMLnamespaceattribute{fo}{display-align}{\FOdisplayalign}{\inherit}
+%auto | autosense-script | no-change | reset-size
+%| ideographic | alphabetic | hanging | mathematical | inherit
+%\XMLnamespaceattribute{fo}{dominant-baseline}{\FOdominantbaseline}{auto}
+%<angle> | below | level | above | higher | lower | inherit
+%\XMLnamespaceattribute{fo}{elevation}{\FOelevation}{\inherit}
+%show | hide | inherit
+\XMLnamespaceattribute{fo}{empty-cells}{\FOemptycells}{\inherit}
+%<length> | inherit
+\XMLnamespaceattribute{fo}{end-indent}{\FOendindent}{\inherit}
+%yes | no
+%\XMLnamespaceattribute{fo}{ends-row}{\FOendsrow}{no}
+%<length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{extent}{\FOextent}{0.0pt}
+%<uri-reference>
+\XMLnamespaceattribute{fo}{external-destination}{\FOexternaldestination}{}
+%before | start | end | left | right | none | inherit
+\XMLnamespaceattribute{fo}{float}{\FOfloat}{none}
+%<name>
+\XMLnamespaceattribute{fo}{flow-name}{\FOflowname}{}
+%[ [ <font-style> || <font-variant>
+%|| <font-weight> ]? <font-size> [ / <line-height>]? <font-family>
+%] | caption | icon | menu | message-box | small-caption | status-bar
+%| inherit
+\XMLnamespaceattribute{fo}{font}{\FOfont}{\inherit}
+%[[ <family-name> | <generic-family> ],]* [<family-name> | <generic-family>] | inherit
+\XMLnamespaceattribute{fo}{font-family}{\FOfontfamily}{\inherit}
+%\XMLnamespaceattribute{fo}{font-selection-strategy}{\FOselectionstrategy}{auto}
+%<absolute-size> | <relative-size> | <length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{font-size}{\FOfontsize}{\inherit}
+%<number> | none | inherit
+\XMLnamespaceattribute{fo}{font-size-adjust}{\FOfontsizeadjust}{\inherit}
+%normal | wider | narrower | ultra-condensed
+% | extra-condensed | condensed | semi-condensed | semi-expanded |
+% expanded | extra-expanded | ultra-expanded |inherit
+\XMLnamespaceattribute{fo}{font-stretch}{\FOfontstretch}{\inherit}
+%normal | italic | oblique |  backslant | inherit
+\XMLnamespaceattribute{fo}{font-style}{\FOfontstyle}{\inherit}
+%normal | small-caps | inherit
+\XMLnamespaceattribute{fo}{font-variant}{\FOfontvariant}{\inherit}
+%normal | bold | bolder | lighter | 100 | 200
+% | 300 | 400 | 500 | 600 | 700 | 800 | 900 | inherit
+\XMLnamespaceattribute{fo}{font-weight}{\FOfontweight}{\inherit}
+%auto | even | odd | end-on-even | end-on-odd | no-force | inherit
+\XMLnamespaceattribute{fo}{force-page-count}{\FOforcepagecount}{auto}
+%<string>
+\XMLnamespaceattribute{fo}{format}{\FOformat}{\inherit}
+%<angle> | inherit
+%\XMLnamespaceattribute{fo}{glyph-orientation-horizontal}{\FOglyphorientationhorizontal}{\inherit}
+%auto | <angle> | inherit
+%\XMLnamespaceattribute{fo}{glyph-orientation-vertical}{\FOglyphorientationvertical}{\inherit}
+%<character>
+\XMLnamespaceattribute{fo}{grouping-separator}{\FOgroupingseparator}{}
+%<number>
+%\XMLnamespaceattribute{fo}{grouping-size}{\FOgroupingsize}{}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{height}{\FOheight}{auto}
+%false | true | inherit
+\XMLnamespaceattribute{fo}{hyphenate}{\FOhyphenate}{\inherit}
+%<character> | inherit
+\XMLnamespaceattribute{fo}{hyphenation-character}{\FOhyphenationcharacter}{\inherit}
+%auto | column | page | inherit
+%\XMLnamespaceattribute{fo}{hyphenation-keep}{\FOhyphenationkeep}{\inherit}
+%no-limit | <number> | inherit
+%\XMLnamespaceattribute{fo}{hyphenation-ladder-count}{\FOhyphenationladdercount}{\inherit}
+%<number> | inherit
+\XMLnamespaceattribute{fo}{hyphenation-push-character-count}{\FOhyphenationpushcharactercount}{\inherit}
+%<number> | inherit
+%\XMLnamespaceattribute{fo}{hyphenation-remain-character-count}{\FOhyphenationremaincharactercount}{\inherit}
+% <id>
+\XMLnamespaceattribute{fo}{id}{\FOid}{}
+%yes | no
+%\XMLnamespaceattribute{fo}{indicate-destination}{\FOindicatedestination}{no}
+%auto | auto-odd | auto-even | <number> | inherit
+\XMLnamespaceattribute{fo}{initial-page-number}{\FOinitialpagenumber}{auto}
+%auto | <length> | <percentage> | <length-range> | inherit
+%\XMLnamespaceattribute{fo}{inline-progression-dimension}{\FOinlineprogressiondimension}{auto}
+%null string |  <idref>
+\XMLnamespaceattribute{fo}{internal-destination}{\FOinternaldestination}{}
+%<keep> | inherit
+\XMLnamespaceattribute{fo}{keep-together}{\FOkeeptogether}{\inherit}
+\XMLnamespaceattribute{fo}{keep-together.within-line}{\FOkeeptogetherLine}{\inherit}
+% since we dont support column keeps, use Page here (not)
+\XMLnamespaceattribute{fo}{keep-together.within-column}{\FOkeeptogetherColumn}{\inherit}
+\XMLnamespaceattribute{fo}{keep-together.within-page}{\FOkeeptogetherPage}{\inherit}
+%<keep> | inherit
+\XMLnamespaceattribute{fo}{keep-with-next}{\FOkeepwithnext}{auto}
+\XMLnamespaceattribute{fo}{keep-with-next.within-line}{\FOkeepwithnextLine}{auto}
+\XMLnamespaceattribute{fo}{keep-with-next.within-column}{\FOkeepwithnextColumn}{auto}
+\XMLnamespaceattribute{fo}{keep-with-next.within-page}{\FOkeepwithnextPage}{auto}
+%<keep> | inherit
+\XMLnamespaceattribute{fo}{keep-with-previous}{\FOkeepwithprevious}{auto}
+\XMLnamespaceattribute{fo}{keep-with-previous.within-line}{\FOkeepwithpreviousLine}{auto}
+\XMLnamespaceattribute{fo}{keep-with-previous.within-column}{\FOkeepwithpreviousColumn}{auto}
+\XMLnamespaceattribute{fo}{keep-with-previous.within-page}{\FOkeepwithpreviousPage}{auto}
+%none | <language> | inherit
+\XMLnamespaceattribute{fo}{language}{\FOlanguage}{\inherit}
+%<length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{last-line-end-indent}{\FOlastlineendindent}{\inherit}
+%none | reference-area | page | inherit
+\XMLnamespaceattribute{fo}{leader-alignment}{\FOleaderalignment}{\inherit}
+%<length-range> | inherit
+\XMLnamespaceattribute{fo}{leader-length}{\FOleaderlength}{\inherit}
+%space | rule | dots | use-content | inherit
+\XMLnamespaceattribute{fo}{leader-pattern}{\FOleaderpattern}{\inherit}
+%use-font-metrics | <length> | inherit
+\XMLnamespaceattribute{fo}{leader-pattern-width}{\FOleaderpatternwidth}{\inherit}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{left}{\FOleft}{auto}
+%normal | <length> | <space> | inherit
+\XMLnamespaceattribute{fo}{letter-spacing}{\FOletterspacing}{\inherit}
+%auto | alphabetic | traditional
+\XMLnamespaceattribute{fo}{letter-value}{\FOlettervalue}{auto}
+%ignore | preserve | treat-as-space | inherit
+\XMLnamespaceattribute{fo}{linefeed-treatment}{\FOlinefeedtreatment}{\inherit}
+%normal | <length> | <number> | <percentage> | <space> | inherit
+\XMLnamespaceattribute{fo}{line-height}{\FOlineheight}{\inherit}
+%consider-shifts | disregard-shifts | inherit
+\XMLnamespaceattribute{fo}{line-height-shift-adjustment}{\FOlineheightshiftadjustment}{\inherit}
+%line-height | font-height | max-height | inherit
+\XMLnamespaceattribute{fo}{line-stacking-strategy}{\FOlinestackingstrategy}{\inherit}
+%<margin-width>{1,4} | inherit 
+\XMLnamespaceattribute{fo}{margin}{\FOmargin}{}
+\XMLnamespaceattribute{fo}{margin-left}  {\FOmarginleft}  {0pt}
+\XMLnamespaceattribute{fo}{margin-right}  {\FOmarginright}  {0pt}
+\XMLnamespaceattribute{fo}{margin-top}  {\FOmargintop}  {0pt}
+\XMLnamespaceattribute{fo}{margin-bottom}  {\FOmarginbottom}  {0pt}
+%<name>
+\XMLnamespaceattribute{fo}{marker-class-name}{\FOmarkerclassname}{}
+%<name>
+\XMLnamespaceattribute{fo}{master-name}{\FOmastername}{}
+%<length> | <percentage> | none | inherit 
+\XMLnamespaceattribute{fo}{max-height}{\FOmaxheight}{\z@}
+%<number> | no-limit | inherit
+\XMLnamespaceattribute{fo}{maximum-repeats}{\FOmaximumrepeats}{no-limit}
+%<length> | <percentage> | none | inherit
+\XMLnamespaceattribute{fo}{max-width}{\FOmaxwidth}{none}
+%<length> | <percentage> | inherit 
+\XMLnamespaceattribute{fo}{min-height}{\FOminheight}{\z@}
+%<length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{min-width}{\FOminwidth}{}
+%<number>
+\XMLnamespaceattribute{fo}{number-columns-repeated}{\FOnumbercolumnsrepeated}{1}
+%<number>
+\XMLnamespaceattribute{fo}{number-columns-spanned}{\FOnumbercolumnsspanned}{1}
+%<number>
+\XMLnamespaceattribute{fo}{number-rows-spanned}{\FOnumberrowsspanned}{1}
+%odd | even | any | inherit
+\XMLnamespaceattribute{fo}{odd-or-even}{\FOoddoreven}{any}
+%<integer> | inherit
+\XMLnamespaceattribute{fo}{orphans}{\FOorphans}{\inherit}
+%visible | hidden | scroll | auto | inherit
+\XMLnamespaceattribute{fo}{overflow}{\FOoverflow}{auto}
+%<padding-width>{1,4} | inherit
+\XMLnamespaceattribute{fo}{padding}{\FOpadding}{\z@}
+%<padding-width> | <length-conditional> | inherit
+\XMLnamespaceattribute{fo}{padding-after}{\FOpaddingafter}{\z@}
+%<padding-width> | <length-conditional> | inherit
+\XMLnamespaceattribute{fo}{padding-before}{\FOpaddingbefore}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-bottom}{\FOpaddingbottom}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-end}{\FOpaddingend}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-left}{\FOpaddingleft}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-right}{\FOpaddingright}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-start}{\FOpaddingstart}{\z@}
+%<padding-width> | inherit
+\XMLnamespaceattribute{fo}{padding-top}{\FOpaddingtop}{\z@}
+%auto | always | avoid | left | right | inherit
+\XMLnamespaceattribute{fo}{page-break-after}{\FOpagebreakafter}{auto}
+%auto | always | avoid | left | right | inherit
+\XMLnamespaceattribute{fo}{page-break-before}{\FOpagebreakbefore}{auto}
+%auto | indefinite | <length> | inherit
+\XMLnamespaceattribute{fo}{page-height}{\FOpageheight}{auto}
+%first | last | rest | any | inherit
+\XMLnamespaceattribute{fo}{page-position}{\FOpageposition}{any}
+%auto | indefinite | <length> | inherit
+\XMLnamespaceattribute{fo}{page-width}{\FOpagewidth}{auto}
+%[<time> | <percentage>]{1,2} | inherit
+%\XMLnamespaceattribute{fo}{pause}{\FOpause}{}
+%<time> | <percentage> | inherit
+%\XMLnamespaceattribute{fo}{pause-after}{\FOpauseafter}{}
+%<time> | <percentage> | inherit
+%\XMLnamespaceattribute{fo}{pause-before}{\FOpausebefore}{}
+%<frequency> | x-low | low | medium | high | x-high | inherit
+%\XMLnamespaceattribute{fo}{pitch}{\FOpitch}{\inherit}
+%<number> | inherit
+%\XMLnamespaceattribute{fo}{pitch-range}{\FOpitchrange}{\inherit}
+%<uri> mix? repeat? | auto | none | inherit 
+%\XMLnamespaceattribute{fo}{play-during}{\FOplayduring}{auto}
+%static | relative | absolute | fixed | inherit
+\XMLnamespaceattribute{fo}{position}{\FOposition}{static}
+%true | false | inherit
+\XMLnamespaceattribute{fo}{precedence}{\FOprecedence}{false}
+%<length> | inherit
+\XMLnamespaceattribute{fo}{provisional-distance-between-starts}{\FOprovisionaldistancebetweenstarts}{\inherit}
+%<length> | inherit
+\XMLnamespaceattribute{fo}{provisional-label-separation}{\FOprovisionallabelseparation}{\inherit}
+% 0 | 90 | 180 | 270 | -90 | -180 | -270 | inherit
+\XMLnamespaceattribute{fo}{reference-orientation}{\FOreferenceorientation}{0}
+%<idref> | inherit
+%\XMLnamespaceattribute{fo}{ref-id}{\FOrefid}{}
+%xsl-region-body | xsl-region-start | xsl-region-end
+%| xsl-region-before | xsl-region-after | xsl-before-float-separator
+%| xsl-footnote-separator | <name>
+\XMLnamespaceattribute{fo}{region-name}{\FOregionname}{}
+%before | baseline | inherit
+\XMLnamespaceattribute{fo}{relative-align}{\FOrelativealign}{\inherit}
+%auto | static | relative | inherit
+\XMLnamespaceattribute{fo}{relative-position}{\FOrelativeposition}{static}
+%auto | perceptual | relative-colorimetric | saturation | 
+% absolute-colorimetric | inherit
+%\XMLnamespaceattribute{fo}{rendering-intent}{\FOrenderingintent}{auto}
+%page | page-sequence | document
+%\XMLnamespaceattribute{fo}{retrieve-boundary}{\FOretrieveboundary}{page-sequence}
+%<name>
+\XMLnamespaceattribute{fo}{retrieve-class-name}{\FOretrieveclassname}{}
+%first-starting-within-page | first-including-carryover |
+% last-starting-within-page | last-ending-within-page
+\XMLnamespaceattribute{fo}{retrieve-position}{\FOretrieveposition}{first-starting-within-page}
+%<number> | inherit
+%\XMLnamespaceattribute{fo}{richness}{\FOrichness}{\inherit}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{right}{\FOright}{auto}
+%<string> | none | inherit
+\XMLnamespaceattribute{fo}{role}{\FOrole}{none}
+%none | dotted | dashed | solid | double | groove
+% | ridge | inherit
+\XMLnamespaceattribute{fo}{rule-style}{\FOrulestyle}{\inherit}
+%<length>
+\XMLnamespaceattribute{fo}{rule-thickness}{\FOrulethickness}{\inherit}
+%uniform | non-uniform | inherit
+\XMLnamespaceattribute{fo}{scaling}{\FOscaling}{uniform}
+%auto | integer-pixels | resample-any-method | inherit
+\XMLnamespaceattribute{fo}{scaling-method}{\FOscalingmethod}{auto}
+%true | false | inherit
+\XMLnamespaceattribute{fo}{score-spaces}{\FOscorespaces}{\inherit}
+%none | auto | <script> | inherit
+\XMLnamespaceattribute{fo}{script}{\FOscript}{\inherit}
+%replace | new
+\XMLnamespaceattribute{fo}{show-destination}{\FOshowdestination}{replace}
+%<length>{1,2} | auto | landscape | portrait | inherit
+\XMLnamespaceattribute{fo}{size}{\FOsize}{auto}
+%<uri>+ | none | inherit
+%\XMLnamespaceattribute{fo}{source-document}{\FOsourcedocument}{none}
+%<space> | inherit
+%\XMLnamespaceattribute{fo}{space-after}{\FOspaceafter}{\z@}
+%<space> | inherit
+%\XMLnamespaceattribute{fo}{space-before}{\FOspacebefore}{\z@}
+%<space> | inherit
+\XMLnamespaceattribute{fo}{space-end}{\FOspaceend}{\z@}
+%<space> | inherit
+\XMLnamespaceattribute{fo}{space-start}{\FOspacestart}{\z@}
+%ignore | preserve | inherit
+\XMLnamespaceattribute{fo}{space-treatment}{\FOspacetreatment}{\inherit}
+%none | all | inherit
+\XMLnamespaceattribute{fo}{span}{\FOspan}{none}
+%normal | none | spell-out | inherit
+%\XMLnamespaceattribute{fo}{speak}{\FOspeak}{\inherit}
+%once | always | inherit
+%\XMLnamespaceattribute{fo}{speak-header}{\FOspeakheader}{\inherit}
+%digits | continuous | inherit
+%\XMLnamespaceattribute{fo}{speak-numeral}{\FOspeaknumeral}{\inherit}
+%code | none | inherit
+%\XMLnamespaceattribute{fo}{speak-punctuation}{\FOspeakpunctuation}{\inherit}
+%<number> | x-slow | slow | medium | fast
+% | x-fast | faster | slower | inherit
+%\XMLnamespaceattribute{fo}{speech-rate}{\FOspeechrate}{\inherit}
+% <uri> | inherit
+\XMLnamespaceattribute{fo}{src}{\FOsrc}{}
+%<length> | inherit
+\XMLnamespaceattribute{fo}{start-indent}{\FOstartindent}{\inherit}
+%show | hide
+\XMLnamespaceattribute{fo}{starting-state}{\FOstartingstate}{show}
+%yes | no
+%\XMLnamespaceattribute{fo}{starts-row}{\FOstartsrow}{no}
+%<number> | inherit
+%\XMLnamespaceattribute{fo}{stress}{\FOstress}{\inherit}
+%auto | suppress | retain | inherit
+\XMLnamespaceattribute{fo}{suppress-at-line-break}{\FOsuppressatlinebreak}{auto}
+%xsl-preceding | xsl-following | xsl-any | <name>[ <name>]*
+\XMLnamespaceattribute{fo}{switch-to}{\FOswitchto}{xsl-any}
+%auto | fixed | inherit
+\XMLnamespaceattribute{fo}{table-layout}{\FOtablelayout}{auto}
+%yes | no
+\XMLnamespaceattribute{fo}{table-omit-footer-at-break}{\FOtableomitfooteratbreak}{no}
+%yes | no
+\XMLnamespaceattribute{fo}{table-omit-header-at-break}{\FOtableomitheaderatbreak}{no}
+%start | center | end | justify | inside | outside 
+% | left | right | <string> | inherit
+\XMLnamespaceattribute{fo}{text-align}{\FOtextalign}{\inherit}
+%relative | start | center | end | justify | inside
+% | outside | left | right | <string> | inherit
+\XMLnamespaceattribute{fo}{text-align-last}{\FOtextalignlast}{\inherit}
+%none | [ [ underline | no-underline] || [ overline | no-overline ]
+%|| [ line-through | no-line-through ] || [ blink | no-blink ] ]| inherit
+\XMLnamespaceattribute{fo}{text-decoration}{\FOtextdecoration}{none}
+%<length> | <percentage> | inherit
+\XMLnamespaceattribute{fo}{text-indent}{\FOtextindent}{\inherit}
+%none | [<color> || <length> <length> <length>?
+%,]* [<color> || <length> <length> <length>?] | inherit
+\XMLnamespaceattribute{fo}{text-shadow}{\FOtextshadow}{none}
+%capitalize | uppercase | lowercase | none | 
+\XMLnamespaceattribute{fo}{text-transform}{\FOtexttransform}{\inherit}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{top}{\FOtop}{auto}
+%auto | yes | no | inherit
+\XMLnamespaceattribute{fo}{treat-as-word-space}{\FOtreataswordspace}{auto}
+%normal | embed | bidi-override | inherit
+\XMLnamespaceattribute{fo}{unicode-bidi}{\FOunicodebidi}{normal}
+%baseline | middle | sub | super | text-top |
+%text-bottom | <percentage> | <length> | top | bottom | inherit
+\XMLnamespaceattribute{fo}{vertical-align}{\FOverticalalign}{auto}
+%visible | hidden | collapse | inherit
+%\XMLnamespaceattribute{fo}{visibility}{\FOvisibility}{visible}
+%[[<specific-voice> | <generic-voice>
+%],]* [<specific-voice> | <generic-voice> ] | inherit
+%\XMLnamespaceattribute{fo}{voice-family}{\FOvoicefamily}{\inherit}
+%<number> | <percentage> | silent | x-soft
+%| soft | medium | loud | x-loud | inherit
+%\XMLnamespaceattribute{fo}{volume}{\FOvolume}{\inherit}
+%normal | pre | nowrap | inherit
+\XMLnamespaceattribute{fo}{white-space}{\FOwhitespace}{\inherit}
+%false | true | inherit
+\XMLnamespaceattribute{fo}{white-space-collapse}{\FOwhitespacecollapse}{\inherit}
+%<integer> | inherit
+\XMLnamespaceattribute{fo}{widows}{\FOwidows}{\inherit}
+%<length> | <percentage> | auto | inherit
+\XMLnamespaceattribute{fo}{width}{\FOwidth}{auto}
+%normal | <length> | <space> | inherit
+\XMLnamespaceattribute{fo}{word-spacing}{\FOwordspacing}{\inherit}
+%no-wrap | wrap | inherit
+\XMLnamespaceattribute{fo}{wrap-option}{\FOwrapoption}{\inherit}
+%lr-tb | rl-tb | tb-rl | lr | rl | tb | inherit
+\XMLnamespaceattribute{fo}{writing-mode}{\FOwritingmode}{lr-tb}
+%<country-language> | inherit
+%\XMLnamespaceattribute{fo}{xml:lang}{\FOxmllang}{\inherit}
+%auto | <integer> | inherit
+\XMLnamespaceattribute{fo}{z-index}{\FOzindex}{auto}
+%-------------------------------
+\XMLnamespaceattribute{fotex}{column-align}{\FOcolumnalign}{}
+ 
+
+\XMLname{fo:inline-container}{\FOInlineContainer}
+\XMLname{fo:list-item-label}{\FOListItemLabel}
+\XMLname{fo:list-item-body}{\FOListItemBody}
+\XMLname{fo:table-cell}{\FOTableCell}
+\XMLname{fo:table-row}{\FOTableRow}
+\def\SpaceAttributes{
+ \XMLattribute{space-after.optimum}{\FOspaceafteroptimum}{\z@}
+ \XMLattribute{space-after.maximum}{\FOspaceaftermaximum}{\z@}
+ \XMLattribute{space-after.minimum}{\FOspaceafterminimum}{\z@}
+ \XMLattribute{space-before.optimum}{\FOspacebeforeoptimum}{\z@}
+ \XMLattribute{space-before.maximum}{\FOspacebeforemaximum}{\z@}
+ \XMLattribute{space-before.minimum}{\FOspacebeforeminimum}{\z@}
+ \XMLattribute{space-after}{\FOspaceafter}{}
+ \XMLattribute{space-before}{\FOspacebefore}{}
+}
+\gdef\Defaultx@fontfamily{Times-Roman}
+\gdef\FOheadindent{\z@}
+ \gdef\FOautorestore{no}
+ \gdef\FOazimuth{center}
+ \gdef\FObordercollapse{collapse}
+ \gdef\FOborderseparation{\z@}
+ \gdef\FOborderspacing{\z@}
+ \gdef\FOcaptionside{before}
+ \gdef\FOcolor{}
+ \gdef\FOcountry{none}
+ \gdef\FOdirection{ltr}
+ \gdef\FOdisplayalign{auto}
+ \gdef\FOelevation{level}
+ \gdef\FOemptycells{show}
+ \gdef\FOendindent{\z@}
+ \gdef\FOfont{}
+ \gdef\FOfontfamily{Times-Roman}
+ \gdef\FOfontsizeadjust{none}
+ \gdef\FOfontsize{medium}
+ \gdef\FOfontstretch{normal}
+ \gdef\FOfontstyle{normal}
+ \gdef\FOfontvariant{normal}
+ \gdef\FOfontweight{normal}
+ \gdef\FOformat{1}
+ \gdef\FOglyphorientationhorizontal{0}
+ \gdef\FOglyphorientationvertical{auto}
+ \gdef\FOhyphenate{false}
+ \gdef\FOhyphenationcharacter{-}
+ \gdef\FOhyphenationkeep{none}
+ \gdef\FOhyphenationladdercount{no-limit}
+ \gdef\FOhyphenationpushcharactercount{2}
+ \gdef\FOhyphenationremaincharactercount{2}
+ \gdef\FOlanguage{none}
+ \gdef\FOlastlineendindent{\z@}
+ \gdef\FOleaderalignment{none}
+ \gdef\FOleaderlength{\z@}
+ \gdef\FOleaderpattern{space}
+ \gdef\FOleaderpatternwidth{}
+ \gdef\FOletterspacing{normal}
+ \gdef\FOlinefeedtreatment{treat-as-space}
+ \gdef\FOlineheight{normal}
+ \gdef\FOlineheightshiftadjustment{consider-shifts}
+ \gdef\FOlinestackingstrategy{line-height}
+ \gdef\FOorphans{2}
+ \gdef\FOpagebreakinside{auto}
+ \gdef\FOpitch{medium}
+ \gdef\FOpitchrange{50}
+ \gdef\FOprovisionaldistancebetweenstarts{24.0pt}
+ \gdef\FOprovisionallabelseparation{6.0pt}
+ \gdef\FOrelativealign{before}
+ \gdef\FOrichness{50}
+ \gdef\FOrulestyle{solid}
+ \gdef\FOrulethickness{1.0pt}
+ \gdef\FOscorespaces{true}
+ \gdef\FOscript{auto}
+ \gdef\FOspacetreatment{preserve}
+% \gdef\FOspeak{normal}
+% \gdef\FOspeakheader{once}
+% \gdef\FOspeaknumeral{continuous}
+% \gdef\FOspeakpunctuation{none}
+% \gdef\FOspeechrate{medium}
+ \gdef\FOstartindent{\z@}
+% \gdef\FOstress{50}
+ \gdef\FOtextalign{start}
+ \gdef\FOtextalignlast{relative}
+ \gdef\FOtextindent{\z@}
+ \gdef\FOtexttransform{none}
+% \gdef\FOvoicefamily{}
+ \gdef\FOvolume{medium}
+ \gdef\FOwhitespace{normal}
+ \gdef\FOwhitespacecollapse{true}
+ \gdef\FOwidows{2}
+ \gdef\FOwordspacing{normal}
+ \gdef\FOwrapoption{wrap}
+%<margin-width> | inherit
+ \gdef\FOmarginbottom{\z@}
+%<margin-width> | inherit
+\gdef\FOmarginleft{\z@}
+%<margin-width> | inherit
+\gdef\FOmarginright{\z@}
+%<margin-width> | inherit
+\gdef\FOmargintop{\z@}
+
+\XMLelement{fo:root}
+  {}
+  {\documentclass{article}
+   \usepackage{fotex}
+   \begin{document}
+   \pagestyle{empty}
+   \edef\LastLanguage{\FOlanguage}%
+   \ifx\FOhyphenate\att@true
+      \LoadLanguage{\FOlanguage}%
+   \else
+      \LoadLanguage{none}%
+  \fi
+   %\ignorewhitespace
+   }
+  {\end{document}}
+
+
+\XMLelement{fotex:inlinemath}
+   {}
+   {\(}
+   {\)}
+ 
+
+\XMLelement{fotex:equation}
+   {}
+   {\begin{equation}}
+   {\end{equation}}
+ 
+
+\XMLelement{fotex:displaymath}
+   {}
+   {\begin{displaymath}}
+   {\end{displaymath}}     
+
+\XMLelement{fotex:eqnarray}
+ {}
+ {\xmlgrab}
+ {\begin{gather*}#1\end{gather*}}
+
+\XMLelement{fotex:subeqn}
+  {}
+  {\xmlgrab}
+  {\begingroup
+       \utfeight@protect@chars
+       \xdef\temp{\FOid}
+   \endgroup
+    \let\FOid\temp
+    \ifx\FOid\@empty
+     \gdef\w@t{#1\nonumber\\}
+   \else
+% needs the global version
+     \gdef\w@t{#1\label{\temp}\\}
+   \fi
+   \aftergroup\w@t}
+
+\XMLelement{fotex:bookmark}
+ {
+  \XMLattribute{fotex-bookmark-level}{\FOTEXbookmarklevel}{0}
+  \XMLattribute{fotex-bookmark-label}{\FOTEXbookmarklabel}{}
+ }
+ {\xmlgrab}
+ {\protectCS\FOTEXbookmarklabel
+   \let\ignorespaces\@empty
+   \pdfbookmark[\FOTEXbookmarklevel]{#1}{\FOTEXbookmarklabel}}
+
+\XMLelement{fo:block}
+  {\SpaceAttributes}
+  {%
+  \FOBlockGrabfalse
+  \FOexpandattributes
+  \FOSetHyphenation
+  %\edef\SavedNColumns{\NColumns}
+  \ifx\XML@parent\FOListItemLabel
+       \def\w@t{\FOListBlock}%
+       \def\@whattodonext{\FOEndBlock}%
+  \else
+   \ifFOinOutput
+     \ifx\FObackgroundcolor\att@transparent
+        \ifx\FOborderstyle\att@solid
+          \FOBlockGrabtrue
+        \fi
+     \else
+         \FOBlockGrabtrue
+     \fi
+     \def\w@t{\FOOutputBlock}%
+     \def\@whattodonext{\FOEndOutputBlock}%
+   \else
+% we care if a block is inside a table cell
+       \ifnum\FOinTable>\z@
+         \def\w@t{\FOBoxedBlock{\CurrentCellWidth}}%
+         \def\@whattodonext{\FOEndBoxedBlock}
+       \else
+        % we care if a block is a second or subsequent child of a list body
+        \ifx\XML@parent\FOListItemBody
+          \global\advance\FOListBlocks by 1%
+          \ifnum\FOListBlocks=1\relax\else\FOListInnerPartrue\fi
+        \else
+        % but also if its nested within a list body block
+          \ifFOListBody
+             \FOListInnerPartrue
+          \fi
+        \fi
+        \ifx\FObackgroundcolor\att@transparent
+         \ifx\FOborderstyle\att@solid
+           \FOBlockGrabtrue
+         \fi
+        \else
+          \FOBlockGrabtrue
+        \fi
+        \def\@whattodonext{\FOEndBlock}
+        \def\w@t{\FONormalBlock}%
+       \fi
+    \fi
+  \fi
+%\typeout{Block \the\inputlineno, \meaning\w@t,  \meaning\@whattodonext}%
+  \w@t
+  \ifx\FOkeeptogether\att@always\samepage\fi
+  \ifx\FOkeeptogetherColumn\att@always\samepage\fi
+  \ifx\FOkeeptogetherPage\att@always\samepage\fi
+  %\usewhitespace\ignorespaces
+  }
+  {\ifx\FOkeeptogether\att@always\samepage\fi
+  \ifx\FOkeeptogetherColumn\att@always\samepage\fi
+  \ifx\FOkeeptogetherPage\att@always\samepage\fi
+  \@whattodonext
+}
+
+\XMLelement{fo:character}
+  {}
+  {
+  \ifx\FOverticalalign\att@auto
+    \let\FOverticalalign\FObaselineshift
+  \fi
+  \FO@character{\FOcharacter}}
+  {}
+
+\XMLelement{fo:external-graphic}
+   {
+%auto | <length> | <percentage> | inherit
+\XMLattribute{content-height}{\FOcontentheight}{auto}
+%auto | <length> | <percentage> | inherit
+\XMLattribute{content-width}{\FOcontentwidth}{auto}
+}
+   {
+{\utfeight@protect@chars\expandafter\FOfiletest\FOsrc\@empty\@empty\@empty\@empty\@empty\@empty\@empty\@}%
+\ifx\FOcontentwidth\att@scaletofit
+ \setkeys{Gin}{width=\linewidth}%
+\else
+  \ifx\FOcontentwidth\att@auto\else\FOSetGWidth\fi
+\fi
+\ifx\FOcontentheight\att@scaletofit
+ \setkeys{Gin}{height=\textheight}%
+\else
+ \ifx\FOcontentheight\att@auto\else\FOSetGHeight\fi
+\fi
+\def\Picscaled{\includegraphics{\FOsrcname}}
+\ifx\FOscaling\att@uniform\else\setkeys{Gin}{keepaspectratio=false}\fi
+%\csname startQ@\FOtextalign\endcsname
+\ifx\FOborderstyle\att@solid\fbox{\Picscaled}\else\Picscaled\fi
+%\csname endQ@\FOtextalign\endcsname
+ }
+{}
+
+
+\XMLelement{fo:block-container}
+  {}
+  {}
+  {}
+
+\XMLelement{fo:float}
+  {\XMLattribute{float}{\FOfloat}{float}}
+  {\ifx\FOfloat\att@none
+     \begin{figure}[!htp]
+   \else
+     \begin{figure}
+   \fi
+   \FOlabel}
+  {\end{figure}}
+
+\XMLelement{fo:flow}
+  {}
+  {\FOSetHyphenation
+  \clearpage
+  \DEBUG{New page, \the\c@page, \PageNumber}%
+  \ifx\PageNumber\att@auto
+  \else
+     \ifx\PageNumber\att@autoeven
+       \ifodd\c@page\hbox{}\newpage\fi
+     \else
+        \ifx\PageNumber\att@autoodd
+          \ifodd\c@page\else\hbox{}\newpage\fi
+        \else
+          \setcounter{page}{\PageNumber}%
+        \fi
+     \fi
+  \fi
+  \ifx\@empty\pendingID\else
+   \@bsphack
+   \protected@write\@mainaux{}%
+    {\string\newlabel{\pendingID}{{}{\expandafter\FOgeneratePage\FOformat\@null}{}{\pendingID}{}}}%
+   \@esphack
+  \hyper@@anchor{\pendingID}{\relax}%
+  \global\let\pendingID\@empty
+  \fi
+  
+    \DEBUG{^^JStart page sequence, using layout \xFOmastername, at page \the\c@page}
+  
+  \@ifundefined{Atomic:\xFOmastername}
+   {
+    \@ifundefined{First:\xFOmastername}
+    {
+     \ifx\FOinitialpagenumber\att@auto
+        \ifodd\c@page
+    \DEBUG{Master \xFOmastername: no first page, use odd page}
+           \edef\PFirst{\csname Odd:\xFOmastername\endcsname}
+        \else
+           \DEBUG{Master \xFOmastername: no first page, use even page}
+           \@ifundefined{Even:\xFOmastername}
+            {\edef\PFirst{\csname Odd:\xFOmastername\endcsname}}
+            {\edef\PFirst{\csname Even:\xFOmastername\endcsname}}
+        \fi
+     \else
+      \ifx\FOinitialpagenumber\att@autoeven
+           \@ifundefined{Even:\xFOmastername}
+            {\edef\PFirst{\csname Odd:\xFOmastername\endcsname}}
+            {\edef\PFirst{\csname Even:\xFOmastername\endcsname}}
+      \else
+        \ifx\FOinitialpagenumber\att@autoodd
+          \edef\PFirst{\csname Odd:\xFOmastername\endcsname}
+        \else
+          \ifodd\FOinitialpagenumber
+           \edef\PFirst{\csname Odd:\xFOmastername\endcsname}
+          \else
+           \@ifundefined{Even:\xFOmastername}
+            {\edef\PFirst{\csname Odd:\xFOmastername\endcsname}}
+            {\edef\PFirst{\csname Even:\xFOmastername\endcsname}}
+          \fi
+        \fi
+      \fi
+     \fi
+    }
+    {
+     \edef\PFirst{\csname First:\xFOmastername\endcsname}
+    }
+   \@ifundefined{Blank:\xFOmastername}
+     {\edef\PBlank{\csname Odd:\xFOmastername\endcsname}}
+     {\edef\PBlank{\csname Blank:\xFOmastername\endcsname}}
+   \@ifundefined{Even:\xFOmastername}
+       {\edef\PEven{\csname Odd:\xFOmastername\endcsname}}
+       {\edef\PEven{\csname Even:\xFOmastername\endcsname}}
+   \edef\POdd{\csname Odd:\xFOmastername\endcsname}
+  }
+  {
+      \let\PFirst\xFOmastername
+      \let\PBlank\xFOmastername
+      \let\POdd\xFOmastername
+      \let\PEven\xFOmastername
+  }
+  \DEBUG{ first page master  is [\PFirst]}
+  \DEBUG{ odd  page master is [\POdd]}
+  \DEBUG{ even page master is [\PEven]}
+  \DEBUG{ blank page master is [\PBlank]}
+  \expandafter\Pass\csname\POdd:xsl-region-body\endcsname\\
+  \csname Atomic:\POdd\endcsname
+  \oddsidemargin\MasterLeftMargin
+  \evensidemargin\MasterLeftMargin
+  \advance\evensidemargin by \SpecialOffset
+  \advance\oddsidemargin by \SpecialOffset
+  \@ifundefined{Atomic:\PEven}{\DEBUG{no master for Atomic:\PEven}}
+    {\csname Atomic:\PEven\endcsname
+     \evensidemargin\MasterLeftMargin
+     \advance\evensidemargin by \SpecialOffset
+    }
+   \edef\EvenHeadExtent{\csname\PEven:before-extent\endcsname}
+   \edef\EvenHead{Static:\csname\PEven:before\endcsname}
+   \edef\EvenTailExtent{\csname\PEven:after-extent\endcsname}
+   \edef\EvenTail{Static:\csname\PEven:after\endcsname}
+   \edef\FirstHeadExtent{\csname\PFirst:before-extent\endcsname}
+   \edef\FirstHead{Static:\csname\PFirst:before\endcsname}
+   \edef\FirstTailExtent{\csname\PFirst:after-extent\endcsname}
+   \edef\FirstTail{Static:\csname\PFirst:after\endcsname}
+   \edef\OddHeadExtent{\csname\POdd:before-extent\endcsname}
+   \edef\OddHead{Static:\csname\POdd:before\endcsname}
+   \edef\OddTailExtent{\csname\POdd:after-extent\endcsname}
+   \edef\OddTail{Static:\csname\POdd:after\endcsname}
+   \edef\BlankHeadExtent{\csname\PBlank:before-extent\endcsname}
+   \edef\BlankHead{Static:\csname\PBlank:before\endcsname}
+   \edef\BlankTailExtent{\csname\PBlank:after-extent\endcsname}
+   \edef\BlankTail{Static:\csname\PBlank:after\endcsname}
+   \FOSetPage
+   \ifnum\NColumns>1\begin{multicols}{\NColumns}\fi
+%  \ifnum\NColumns>1\MulticolPendingtrue
+%  \begin{multicols}{\NColumns}\fi
+   }
+  {
+   \ifnum\NColumns>1\end{multicols}\fi
+   \clearpage
+   \ifx\ForcePage\att@auto
+   \else
+% remember that we'll do a \clearpage next time anyway.
+% so leave here on wrong sort of page
+     \ifx\ForcePage\att@endoneven
+       \ifodd\c@page\else\BlankPage\newpage\fi
+     \else
+        \ifx\ForcePage\att@endonodd
+          \ifodd\c@page\BlankPage\newpage\fi
+        \fi
+     \fi
+   \fi
+   }
+
+\XMLelement{fo:footnote-body}
+  {}
+  {}
+  {}
+
+
+\XMLelement{fo:footnote}
+  {}
+  {\xmlgrab}
+  {\xmltextwochildren\FOplainfootmark\FOplainfoottext#1}
+
+\XMLelement{fo:page-number-citation}
+   {\XMLattribute{ref-id}{\FOrefid}{}}
+   {}
+   {\begingroup
+    \utfeight@protect@chars\xdef\temp{\FOrefid}%
+    \endgroup
+    \let\FOrefid\temp
+    \fopagecitation}
+
+\XMLelement{fotex:sort}
+   {}
+   {\let\fopagecitation\fosortpagecitation
+    \global\sorttoks{}}
+   {\global\sortcount-2\let\@elt\focompress@elt
+    \let\fosep\@empty
+    \let\foheld\relax
+    \the\sorttoks
+    \foheld}
+
+\XMLelement{fo:wrapper}
+  {}
+  {\FOSetFont{wrapper}}
+  {}
+
+\XMLelement{fo:leader}
+  {}
+  {
+\leavevmode
+\ifx\FOleaderpattern\leader@pattern@rule
+   \ifx\FOrulestyle\rule@style@dashed
+    \def\w@t{\cleaders\hbox{$\m@th \mkern1.5mu-\mkern1.5mu$}\hfil}%
+   \else
+    \ifx\FOrulestyle\rule@style@dotted
+      \def\w@t{\cleaders\hbox{$\m@th \mkern1.5mu.\mkern1.5mu$}\hfil}%
+    \else
+      \ifdim\FOrulethickness>\z@
+        \def\w@t{\leaders\hrule height \FOrulethickness\hfill}%
+      \else
+        \def\w@t{\hfill}%
+      \fi
+    \fi
+   \fi
+\else
+  \ifx\FOleaderpattern\leader@pattern@dots
+      \def\w@t{\cleaders\hbox{$\m@th \mkern1.5mu.\mkern1.5mu$}\hfill}%
+  \else % space
+      \def\w@t{\hfill}%
+  \fi
+\fi
+\PercentToDimen{\FOleaderlength}%
+\ifdim\@tempdima=\z@\w@t\else\hbox to \@tempdima{\w@t}\fi
+   }
+  {}
+  
+\catcode`\/\active
+
+\XMLelement{fo:basic-link}
+  {
+\XMLattribute{target-presentation-context}{\FOtargetpresentationcontext}{}
+\XMLattribute{target-processing-context}{\FOtargetprocessingcontext}{}
+\XMLattribute{target-stylesheet}{\FOtargetstylesheet}{}
+ }
+  {\xmlgrab}
+  {
+\ifx\FOverticalalign\att@auto
+    \let\FOverticalalign\FObaselineshift
+\fi
+\begingroup
+\utfeight@protect@chars\xdef\temp{\FOinternaldestination}%
+\endgroup
+\let\FOinternaldestination\temp
+\begingroup
+\utfeight@protect@chars\xdef\temp{\FOexternaldestination}%
+\endgroup
+\let\FOexternaldestination\temp
+   \ifx\FOindicatedestination\att@yes
+     \setkeys{Hyp}{pdfborder={0 0 1}}
+   \fi
+   \ifx\FOexternaldestination\@empty
+    \hyperlink{\FOinternaldestination}{\FO@inlinesequence{#1}}%
+    \let\FOinternaldestination\@empty
+   \else
+      \expandafter\@basiclink\relax#1//\@nil#1\@nil\FOexternaldestination\@nil%
+    \let\FOexternaldestination\@empty
+    \fi
+  }
+\catcode`\/=12
+
+\XMLelement{fo:inline-container}
+  {}
+  {}
+  {}
+
+\XMLelement{fo:list-block}
+  {\SpaceAttributes}
+  {
+   \ifx\FOstartindent\att@bodystart
+     \let\FOstartindent\z@
+   \fi
+   \ifx\FOendindent\att@labelend
+     \let\FOendindent\z@
+   \fi
+   \FOSetFont{normal}%
+   \advance\FOinList by 1\relax
+   \ifnum\FOinList>1\relax\leavevmode\fi
+   \begin{list}{}{%
+   \itemindent=\FOstartindent
+   \leftmargin=\FOprovisionaldistancebetweenstarts
+   \advance\leftmargin by \FOmarginleft
+   \rightmargin=\FOmarginright
+   \labelwidth=\FOprovisionaldistancebetweenstarts
+   \advance\labelwidth by -\FOprovisionallabelseparation
+   \expandafter\csname List\FOtextalign\endcsname
+   \labelsep\FOprovisionallabelseparation
+   \itemsep\z@
+   \parsep\z@
+   \ifx\@empty\FOspacebefore
+      \@tempdima\FOspacebeforeoptimum
+      \advance\@tempdima by -\FOspacebeforeminimum
+      \@tempdimb\FOspacebeforeoptimum
+      \advance\@tempdimb by \FOspacebeforemaximum
+      \topsep\FOspacebeforeoptimum plus \@tempdimb minus \@tempdima
+    \else
+      \topsep\FOspacebefore
+    \fi
+   }}
+  {\end{list}
+   \advance\FOinList by -1
+   \par
+  }
+
+\XMLelement{fo:list-item-body}
+  {}
+  {\ifx\FOstartindent\att@bodystart
+     \let\FOstartindent\z@
+   \fi
+   \FOListBodytrue\FOListBlocks0}
+  {}
+
+\XMLelement{fo:list-item-label}
+  {}
+  {\xmlgrab}
+  {\ifx\FOstartindent\att@bodystart
+     \let\FOstartindent\z@
+   \fi
+   \ifx\FOendindent\att@labelend
+     \let\FOendindent\z@
+   \fi
+   \savebox{\ItemBox}{#1}\item[#1]\FOlabel}
+
+\XMLelement{fo:list-item}
+  {}
+  {\FOlabel}
+  {}
+
+\XMLelement{fo:page-number}
+  {}
+  {}
+  {\expandafter\FOgeneratePage\FOformat\@null}
+
+
+\XMLelement{fo:page-sequence}
+  {}
+  {\begingroup
+       \utfeight@protect@chars
+       \xdef\xFOmastername{\FOmastername}
+       \xdef\temp{\FOid}
+   \endgroup
+   \let\FOid\temp
+   \let\pendingID\FOid
+   \let\PageNumber\FOinitialpagenumber
+   \let\ForcePage\FOforcepagecount
+   \FOSetHyphenation
+   }
+  {}
+
+\XMLelement{fo:region-after}
+  {}
+  {\ifx\FOregionname\@empty
+    \def\FOregionname{xsl-region-after}
+  \fi
+  \DEBUG{  Link [\FOMaster:after] to \FOregionname}
+  \begingroup
+     \utfeight@protect@chars
+     \expandafter\xdef\csname\FOMaster:after\endcsname{\FOregionname}
+     \expandafter\xdef\csname\FOMaster:after-extent\endcsname{\FOextent}
+  \endgroup
+  }
+  {}
+
+
+\XMLelement{fo:region-before}
+  {}
+  {\ifx\FOregionname\@empty
+    \def\FOregionname{xsl-region-before}
+  \fi
+  \DEBUG{  Link [\FOMaster:before]  to \FOregionname}
+    \begingroup
+     \utfeight@protect@chars
+     \expandafter\xdef\csname\FOMaster:before\endcsname{\FOregionname}
+     \expandafter\xdef\csname\FOMaster:before-extent\endcsname{\FOextent}
+  \endgroup
+  }
+  {}
+
+\XMLelement{fo:region-body}
+  {}
+  {
+  \ifx\FOmargin\@empty\relax\else
+      \let\FOmarginright\FOmargin
+      \let\FOmarginleft\FOmargin
+      \let\FOmargintop\FOmargin
+      \let\FOmarginbottom\FOmargin
+  \fi
+  \xdef\InnerBottomMargin{\FOmarginbottom}
+  \xdef\InnerTopMargin{\FOmargintop}
+  \xdef\InnerLeftMargin{\FOmarginleft}
+  \xdef\InnerRightMargin{\FOmarginright}
+  \ifx\FOregionname\@empty
+    \def\FOregionname{xsl-region-body}
+  \fi
+  \DEBUG{ Set up [\FOMaster:\FOregionname] body content: \FOcolumngap|\FOcolumncount|\FOmarginbottom|\FOmargintop|}
+    \begingroup
+     \utfeight@protect@chars
+  \expandafter\xdef\csname\FOMaster:\FOregionname\endcsname{\FOcolumngap|\FOcolumncount|\FOmarginbottom|\FOmargintop|}
+    \endgroup
+  }
+ {}
+
+\XMLelement{fo:static-content}
+ {}
+ {\xmlgrab}
+ {\protectCS\FOflowname
+  \FOSetStatic{#1}{\FOflowname}}
+
+\XMLelement{fo:table-and-caption}
+  {}
+  { 
+   \global\ColSpecs={}\NCols0
+   \TableWidth\linewidth
+   \advance\TableWidth by -\tabcolsep
+   \advance\TableWidth by -\FOmarginleft
+   \advance\TableWidth by -\FOmarginright
+   \gdef\TableHeader{}
+   \NoTableSetup
+    \ifx\XML@parent\FOInlineContainer
+      \ifnum\FOreferenceorientation=0
+       \FOlabel
+      \else
+       \begin{sidewaystable}\FOlabel
+      \fi
+    \else
+     \ifnum\FOreferenceorientation=0
+       \begin{table}[!htbp]\FOlabel
+      \else
+       \begin{sidewaystable}\FOlabel
+      \fi
+    \fi
+  }
+  {\ifx\XML@parent\FOInlineContainer
+      \ifnum\FOreferenceorientation=0
+      \else
+       \end{sidewaystable}
+      \fi
+   \else
+     \ifnum\FOreferenceorientation=0
+       \end{table}
+      \else
+       \end{sidewaystable}
+      \fi
+   \fi
+  }
+
+\XMLelement{fo:table-body}
+  {  }
+  {
+   \FOFirstCelltrue
+   \FOinTable1
+   \expandafter\NoTableStart{\TableHeader}%
+ }
+{
+ \ifnum\NCols<1
+  \typeout{Table end of no cols defined}
+ \fi
+ \NoTableEnd
+}
+
+
+\XMLelement{fo:table-caption}
+  {}
+  {}
+  {\par}
+
+\XMLelement{fo:table-cell}
+  {
+   \XMLattribute{ends-row}{\FOendsrow}{false}
+   \XMLattribute{starts-row}{\FOstartsrow}{false}
+  }
+  {\xmlgrab}
+  {\FOlabel
+  \FOexpandattributes
+  \NoTableCell{#1}}
+
+
+\XMLelement{fo:table-column}
+ {}
+ { 
+  \@tempcnta0
+  \loop\ifnum\FOnumbercolumnsrepeated>\@tempcnta
+   \advance\@tempcnta by 1
+   {\NoTableColumn}%
+  \repeat
+  }
+ {}
+
+\XMLelement{fo:table-header}
+  {}
+  {\xmlgrab}
+  {\gdef\TableHeader{#1}}
+
+\XMLelement{fo:table-row}
+  {}
+  {\xmlgrab}
+  {\NoTableRow{#1}}
+
+\XMLelement{fo:table}
+  {}
+  {
+   \global\ColSpecs={}\NCols0
+   \TableWidth\linewidth
+   \advance\TableWidth by -\FOmarginleft
+   \advance\TableWidth by -\FOmarginright
+   \gdef\TableHeader{}
+   \NoTableSetup
+  }
+  {}
+
+\XMLelement{fo:inline}
+  {}
+  {\xmlgrab}
+  {
+  %\usewhitespace\ignorespaces
+  \ifx\FOverticalalign\att@auto
+    \let\FOverticalalign\FObaselineshift
+  \fi
+  \FOlabel
+  \ifx\FOborderstyle\att@solid
+   \ifx\FOborderwidth\att@thin\def\FOborderwidth{0.4pt}\fi
+   \ifx\FOborderwidth\att@medium\def\FOborderwidth{0.8pt}\fi
+   \ifx\FOborderwidth\att@thick\def\FOborderwidth{1.2pt}\fi
+   \FOboxedsequence{#1}%
+  \else
+      \FO@inlinesequence{#1}%
+  \fi}
+
+\XMLelement{fo:bidi-override}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:bidi-override NOT IMPLEMENTED}}
+
+\XMLelement{fo:color-profile}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:color-profile NOT IMPLEMENTED}}
+
+\XMLelement{fo:declarations}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:declarations NOT IMPLEMENTED}}
+
+\XMLelement{fo:initial-property-set}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:initial-property-set NOT IMPLEMENTED}}
+
+\XMLelement{fo:instream-foreign-object}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:instream-foreign-object NOT IMPLEMENTED}}
+
+\XMLelement{fo:marker}
+ {}
+ {\xmlgrab}
+ {\ifx\\#1\\\def\Mark{~}\else\def\Mark{#1}\fi
+%  \typeout{set marker [\Mark]}
+\toks@{}\expandafter\FOaddmarker\FOmarks\relax{\Mark}
+  \xdef\FOmarks{\the\toks@}%
+%  \typeout{SET MARK \FOmarks}%
+  \mark{\FOmarks}}
+
+\XMLelement{fo:retrieve-marker}
+ {}
+ {\xmlgrab}
+ {\begingroup
+       \utfeight@protect@chars
+       \xdef\FOthismark{\botmark}%
+%                       depending on \FOretrieveposition 
+%                       should be \topmark or \firstmark
+       \xdef\FOthisretrieveclassname{\FOretrieveclassname}
+   \endgroup
+   \expandafter\FOgetmarker\FOthismark\relax\relax}
+
+\XMLelement{fo:multi-case}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:multi-case NOT IMPLEMENTED}}
+
+\XMLelement{fo:multi-properties}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:multi-properties NOT IMPLEMENTED}}
+
+\XMLelement{fo:multi-property-set}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:multi-property-set NOT IMPLEMENTED}}
+
+\XMLelement{fo:multi-switch}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:multi-switch NOT IMPLEMENTED}}
+
+\XMLelement{fo:multi-toggle}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:multi-toggle NOT IMPLEMENTED}}
+
+\XMLelement{fo:region-end}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:region-end NOT IMPLEMENTED}}
+
+\XMLelement{fo:region-start}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:region-start NOT IMPLEMENTED}}
+
+\XMLelement{fo:table-footer}
+ {}
+ {\xmlgrab}
+ {\typeout{fo:table-footer NOT IMPLEMENTED}}
+
+
+\XMLelement{fo:layout-master-set}
+  {}
+  {\DEBUG{Start defining page masters}}
+  {\DEBUG{Finish defining page masters}}
+
+\XMLelement{fo:page-sequence-master}
+  {}
+  {
+   \DEBUG{Page sequence master: \FOmastername}
+   \let\Granpa\FOmastername
+  }
+  {}
+
+\XMLelement{fo:single-page-master-reference}
+   {}
+   {\DEBUG{ (single page in \Granpa: use master \FOmastername)}
+    \begingroup
+    \utfeight@protect@chars
+     \expandafter\xdef\csname First:\Granpa\endcsname{\FOmastername}
+     \expandafter\xdef\csname Blank:\Granpa\endcsname{\FOmastername}
+     \expandafter\xdef\csname Odd:\Granpa\endcsname{\FOmastername}
+     \expandafter\xdef\csname Even:\Granpa\endcsname{\FOmastername}
+    \endgroup
+    }
+   {}
+
+\XMLelement{fo:repeatable-page-master-reference}
+   {}
+   {\DEBUG{ (multiple pages in \Granpa: use master \FOmastername)}
+    \begingroup
+     \utfeight@protect@chars
+    \expandafter\xdef\csname Blank:\Granpa\endcsname{\FOmastername}
+    \expandafter\xdef\csname First:\Granpa\endcsname{\FOmastername}
+    \expandafter\xdef\csname Odd:\Granpa\endcsname{\FOmastername}
+    \expandafter\xdef\csname Even:\Granpa\endcsname{\FOmastername}
+    \endgroup
+   }
+   {}
+
+
+\XMLelement{fo:repeatable-page-master-alternatives}
+   {}
+   {
+    \DEBUG{ (complex page layout with alternatives)}
+   }
+   {}
+
+
+\XMLelement{fo:conditional-page-master-reference}
+   {}
+   {
+  \ifx\FOoddoreven\att@even
+     \DEBUG{ Even page for \Granpa: \FOmastername}
+     \begingroup
+       \utfeight@protect@chars
+       \expandafter\xdef\csname Even:\Granpa\endcsname{\FOmastername}
+      \endgroup
+  \else
+    \ifx\FOoddoreven\att@odd
+         \DEBUG{ Odd page for \Granpa: \FOmastername}
+         \begingroup
+           \utfeight@protect@chars
+           \expandafter\xdef\csname Odd:\Granpa\endcsname{\FOmastername}
+         \endgroup
+    \else
+      \ifx\FOpageposition\att@first
+         \DEBUG{ First page for \Granpa: \FOmastername}
+         \begingroup
+          \utfeight@protect@chars
+          \expandafter\xdef\csname First:\Granpa\endcsname{\FOmastername}
+         \endgroup
+      \else
+        \ifx\FOblankornotblank\att@blank
+          \DEBUG{ Blank page for \Granpa: \FOmastername}
+           \begingroup
+             \utfeight@protect@chars
+             \expandafter\xdef\csname Blank:\Granpa\endcsname{\FOmastername}
+           \endgroup
+        \else
+           \DEBUG{ Default page for \Granpa: \FOmastername}
+           \begingroup
+            \utfeight@protect@chars
+            \expandafter\xdef\csname Odd:\Granpa\endcsname{\FOmastername}
+           \endgroup
+        \fi
+      \fi
+    \fi
+  \fi
+  }
+ {}
+
+
+
+\XMLelement{fo:simple-page-master}
+  {}
+  {  \begingroup
+     \utfeight@protect@chars
+     \xdef\FOMaster{\FOmastername}
+     \endgroup
+     \ifx\FOmargin\@empty\relax\else
+      \let\FOmarginright\FOmargin
+      \let\FOmarginleft\FOmargin
+      \let\FOmargintop\FOmargin
+      \let\FOmarginbottom\FOmargin
+     \fi
+    \ifx\FOpagewidth\att@auto\def\FOpagewidth{\paperwidth}\fi
+    \ifx\FOpageheight\att@auto\def\FOpageheight{\paperheight}\fi
+    \expandafter\xdef\csname\FOmastername:after\endcsname{DummyRegion}
+    \expandafter\xdef\csname\FOmastername:before\endcsname{DummyRegion}
+    \expandafter\xdef\csname\FOmastername:before-extent\endcsname{\FOextent}
+    \expandafter\xdef\csname\FOmastername:after-extent\endcsname{\FOextent}
+    }
+  { 
+ \ifdim\InnerTopMargin>\FOmargintop\def\FOmargintop{\InnerTopMargin}\fi
+ \ifdim\InnerBottomMargin>\FOmarginbottom\def\FOmarginbottom{\InnerBottomMargin}\fi
+ \ifdim\InnerRightMargin>\FOmarginright\def\FOmarginright{\InnerRightMargin}\fi
+ \ifdim\InnerLeftMargin>\FOmarginleft\def\FOmarginleft{\InnerLeftMargin}\fi
+ \DEBUG{Define page master \FOmastername, \FOmarginright/\FOmarginleft}
+    \begingroup
+     \utfeight@protect@chars
+    \expandafter\xdef\csname Atomic:\FOmastername\endcsname{
+     \MasterTopMargin\FOmargintop
+     \MasterBottomMargin\FOmarginbottom
+     \MasterRightMargin\FOmarginright
+     \MasterLeftMargin\FOmarginleft
+     \paperwidth\FOpagewidth
+     \paperheight\FOpageheight
+    }
+   \endgroup
+   }
+\endinput
+
+%%% white space hacking to try at some point
+\ignorewhitespace
+in the code for fo:root
+and
+\usewhitespace\ignorespaces
+(to turn on white space, except for any white space at the start of the
+element) at the end of any elements that take character data.
+
+definitions something like'
+\def\ignorewhitespace{
+ \UnicodeCharacter{13}{ \ignorespaces}
+ \UnicodeCharacter{32}{ \ignorespaces}
+ \UnicodeCharacter{9}{ \ignorespaces}
+}
+\def\usewhitespace{
+ \UnicodeCharacter{13}{}
+ \UnicodeCharacter{32}{}
+ \UnicodeCharacter{9}{}
+}
+

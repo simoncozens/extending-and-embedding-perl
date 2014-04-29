@@ -1,0 +1,43 @@
+<sect3 id="api.hv.clear">
+    <title><function>hv_clear</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef><function>hv_clear</function></funcdef>
+        <paramdef>HV* <parameter>hv</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.hv.clear.1">
+        <area coords="2" id="api.hv.clear.2">
+        <area coords="3" id="api.hv.clear.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.hv.clear.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.hv.clear.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+	<para>See also: <xref linkend="api.av.clear">, <xref
+	linkend="api.hv.undef"></para>
+      </sect3>

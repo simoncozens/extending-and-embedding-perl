@@ -1,0 +1,127 @@
+<sect3 id="api.av.fetch">
+    <title><function>av_fetch </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>SV** <function>av_fetch</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+        <paramdef>I32 <parameter>index</parameter></paramdef>
+        <paramdef>bool <parameter>lvalue</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+Retrieves an SV from an array; this is the C-side equivalent of
+<programlisting>
+     $array[$index]
+</programlisting>
+</para>
+<para>
+The <parameter>lvalue</parameter> parameter should be set if we're about to
+store something in the specified index: if the array is not big
+enough, or there hasn't been anything stored in the array index yet,
+Perl will extend the array, make a new SV for us, store it in the
+specified index and return it for us to manipulate.
+</para>
+<example>
+<title> Storing an array in a file </title>
+<para>
+
+<!-- Introduction to example -->
+The <classname>Storable</classname> module implements persistency by
+storing and retrieving Perl data structures in disk files. Here we
+look at an abridged form of the function for storing arrays:
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="4" id="api.av.fetch.1">
+        <area coords="8" id="api.av.fetch.2">
+        <area coords="11" id="api.av.fetch.3">
+        <area coords="17" id="api.av.fetch.4">
+
+          </areaspec>
+          <programlisting>
+static int store_array(stcxt_t *cxt, AV *av)
+{
+    SV **sav;
+    I32 len = av_len(av) + 1;
+    I32 i;
+    int ret;
+
+    PUTMARK(SX_ARRAY);
+    WLEN(len);
+
+    for (i = 0; i < len; i++) {
+        sav = av_fetch(av, i, 0);
+        if (!sav) {
+            STORE_UNDEF();
+            continue;
+        }
+        if (ret = store(cxt, *sav))
+            return ret;
+    }
+
+    return 0;
+}
+
+</programlisting>
+	    <calloutlist>
+	      <callout arearefs="api.av.fetch.1">
+		<para>
+		  Since we're going to iterate over all the elements
+		  in the array, we need to know how many Perl thinks
+		  there are: we can't use the usual C trick of keeping
+		  on going until <function>av_fetch</function> returns
+		  null, because there could be a ``hole'' in the
+		  middle of the array where elements haven't been
+		  used.  (see the example for <xref
+		  linkend="api.av.extend">) So we call
+		  <function>av_len</function> (See <xref
+		  linkend="api.av.len">) to find the highest-numbered
+		  element and add one to get the number of elements.
+
+		</para>
+	      </callout>
+
+	      <callout arearefs="api.av.fetch.2">
+		<para>
+		  These two lines are internal
+		  <classname>Storable</classname> macros which write a
+		  header to the file saying that the next thing stored
+		  is an array.
+		</para>
+	      </callout>
+
+	      <callout arearefs="api.av.fetch.3">
+		<para>
+		  Now we can iterate over the elements of the array,
+		  calling <function>av_fetch</function> on each
+		  element. Note that <function>av_fetch</function>
+		  returns <type>SV**</type> - a pointer to an
+		  <type>SV*</type> - because there's a difference
+		  between storing the null <type>SV</type> in an
+		  array, and not storing an <type>SV</type> at all. If
+		  the return value of <function>av_fetch</function> is
+		  NULL, then there is no <type>SV</type> stored in
+		  that element, and <classname>Storable</classname>
+		  stores <literal>undef</literal>.
+		</para>
+	      </callout>
+
+	      <callout arearefs="api.av.fetch.4">
+		<para>
+		  If there is a scalar there, we call
+		  <function>store</function> to write it out to the
+		  file; note that we need to dereference the
+		  <type>SV**</type> when passing it to
+		  <function>store</function>, because
+		  <function>store</function> expects an
+		  <type>SV</type>.
+        </para>
+        </callout>
+
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.av.store">, <xref linkend="api.hv.store"></para>
+      </sect3>

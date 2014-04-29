@@ -1,0 +1,539 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter>
+
+  <title>Embedding Case Study</title>
+  <para>
+    As we mentioned in the previous chapter, we're now going to apply
+    what we've learnt about embedding Perl to a real application. For
+    our case study, we're going to use the <command>mutt</command>
+    mail client, a relatively commonly-used Unix mail reader.
+  </para>
+  <para>
+    The case study is going to be a no-holds-barred look at the
+    process of embedding Perl into an existing application, including
+    some of the problems we faced and how we worked around them.
+  </para>
+  <sect1>
+    <title>Goals</title>
+    <para>
+      First, though, let's look at what we're trying to
+      achieve. Primarily, we want to give Perl control over the
+      configuration of <command>mutt</command> - we want to rip out
+      the <filename>muttrc</filename> configuration file parsing and
+      options checking code, and replace it with Perl
+      equivalents. This will allow a Perl configuration file to be
+      used by <command>mutt</command> users.
+    </para>
+    <para>
+      For our example, we're not going to completely rewrite
+      <command>mutt</command>'s option parsing - we'll deal with the
+      easiest set of options, and leave alone the hooks, address
+      books, custom headers, aliases and so on. In true textbook
+      style, these can be considered an exercise for the reader.
+    </para>
+  </sect1>
+  <sect1>
+    <title>Preparing the ground</title>
+    <para>
+      We start, fairly obviously, by getting a copy of the
+      <command>mutt</command> sources to work from; at the time of
+      writing, the current development development version was 1.3.24,
+      which we downloaded from <ulink
+      url="ftp://ftp.mutt.org/pub/mutt/mutt-1.3.24i.tar.gz">the Mutt
+      FTP site</ulink>.
+    </para>
+    <para>
+      After unpacking a pristine copy of the sources, we make another
+      copy called <filename>mutt-1.3.24i-perl</filename>, for our
+      working environment.
+    </para>
+    <para>
+      The first thing for us to look at is how we're going to get Perl
+      compiled into the eventual binary, and this means modifying the
+      configuration and Makefile. <command>mutt</command> uses the
+      <emphasis>de facto</emphasis> standard <ulink
+      url="http://www.gnu.org/software/autoconf/"><command>autoconf</command>
+      system.</ulink> We'll make Perl support a configure-time option
+      which defines the <literal>USE_PERL</literal> macro.
+    </para>
+    <para>
+      The way we do this with <command>autoconf</command> is to declare
+      the macro in <filename>acconfig.h</filename> like so:
+      <programlisting>
+ #undef USE_SASL
+
++/* Do you want to use Perl for config file parsing? (--with-perl) */
++#undef USE_PERL
++
+ /* Do you want support for IMAP GSSAPI authentication? (--with-gss) */
+ #undef USE_GSS
+</programlisting>
+      and then also add an option in
+      <filename>configure.in</filename>. We copy some of the code for
+      linking in the SASL authentication library, since it also needs
+      to define a macro and add libraries to the build path. As in the
+      previous chapter, we use <classname>ExtUtils::Embed</classname>
+      as a handy, portable way of determining the compile and link
+      options:
+      <programlisting>
++dnl Perl config file support
++AC_ARG_WITH(perl, [  --with-perl            Perl support for .muttrc parsing],
++        [
++        if test "$with_perl" != "no"
++        then
++           CFLAGS="$CFLAGS `perl -MExtUtils::Embed -e ccopts`"
++           LDFLAGS="$LDFLAGS `perl -MExtUtils::Embed -e ldopts`"
++          AC_DEFINE(USE_PERL)
++        fi
++        ])
++
+</programlisting>
+(<literal>AC_DEFINE</literal> means "#define this macro") 
+    </para>
+    <para>
+      Notice that since <filename>configure</filename>, the file
+      generated from <filename>configure.in</filename>, is a shell
+      script, the backticks are performed when
+      <filename>configure</filename> is run, and so the options are
+      determined when the <filename>Makefile</filename> is built.
+    </para>
+    <para>
+      Next, we rerun <command>autoconf</command> to regenerate the
+      <filename>configure</filename> command. Testing this both with
+      and without the new <literal>--use-perl</literal> option, we can
+      make sure that <command>mutt</command> still compiles.
+    </para>
+    <para>
+      For completeness, we notice that, like <command>perl</command>,
+      <command>mutt</command> will show all of its configuration
+      options when given the appropriate command-line
+      argument. So, we make the following change to
+      <filename>main.c</filename>'s <function>show_version</function>
+      function:
+      <programlisting>
+ #ifdef DL_STANDALONE
+     "+DL_STANDALONE  "
+ #else
+     "-DL_STANDALONE  "
+ #endif
+
++#ifdef USE_PERL
++    "+USE_PERL  "
++#else
++    "-USE_PERL  "
++#endif
+</programlisting>
+    </para>
+  </sect1>
+  <sect1>
+    <title>Configuration Options</title>
+    <para>
+      Now we can move on to thinking about how we're going to replace
+      the configuration file parsing. <command>mutt</command> has
+      several different kinds of options: binary options, string
+      options, and quad-state options. After examining the sources, we
+      find that these options are parsed in
+      <filename>init.c</filename>, with the main function being
+      <function>source_rc</function>. As we're going to provide our
+      own facility for parsing <command>mutt</command> RC files, we
+      can conditionalize these functions on <literal>#ifndef
+      USE_PERL</literal>.
+    </para>
+    <para>
+      The initial idea was to keep everything inside
+      <filename>init.c</filename>, and simply provide two versions of
+      <function>source_rc</function> - one for the Perl-based parsing,
+      and one for the ordinary parsing. However, this turned out to be
+      problematic - some of the things defined in the
+      <command>mutt</command> header files conflicted with Perl's
+      header files, and it would be very messy to extricate it
+      all.
+    </para>
+    <para>
+      So we decided to follow our own advice from the previous
+      chapter, and put all the embedding functionality in a single
+      file, <filename>perl.c</filename>. This would need another
+      change to the Makefile, which would have to be specified in
+      <filename>configure.in</filename>. This time, we need to add to
+      the substituted variable <literal>MUTT_LIB_OBJECTS</literal>. So
+      we edit <filename>configure.in</filename> again:
+      <programlisting>
+           LDFLAGS="$LDFLAGS `perl -MExtUtils::Embed -e ldopts`"
++          MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS perl.o"
+           AC_DEFINE(USE_PERL)
+</programlisting>
+    </para>
+    <para>
+      And now we're all set up to use <filename>perl.c</filename>;
+      this gives us the added advantage that we can make our Perl
+      interpreter static to this file. We can now write our
+      replacement for <function>source_rc</function>, parsing the
+      config file using Perl. Here's what our initial cut of
+      <filename>perl.c</filename> looks like.
+    </para>
+      <programlisting>
+#include "config.h"
+
+#define REGEXP mutt_REGEXP
+#include "mutt.h"
+#undef REGEXP /* Don't want mutt's version of this */
+
+#include &lt;EXTERN.h&gt;
+#include &lt;perl.h&gt;
+
+static PerlInterpreter *my_perl;
+
+int source_rc (const char *rcfile, BUFFER *err)
+{
+  FILE *f;
+  pid_t pid;
+  struct stat file_stat;
+  size_t rc_size;
+  char* rc;
+
+  if (stat(rcfile, &amp;file_stat) || ((f = mutt_open_read (rcfile, &amp;pid))
+	== NULL))
+  {
+    snprintf (err->data, err->dsize, "%s: %s", rcfile, strerror
+	(errno));
+    return (-1);
+  }
+
+  if (!my_perl)
+  {
+    char *embedding[] = { "", "-e", "0" };
+    my_perl = perl_alloc();
+    perl_construct(my_perl);
+    perl_parse(my_perl, NULL, 3, embedding, NULL);
+    perl_run(my_perl);
+    /* OK, we now have a Perl up and running */
+  }
+
+  rc_size = file_stat.st_size;
+  rc = malloc(rc_size);
+  read(f, rc, rc_size);
+
+  if (!rc)
+  {
+    snprintf (err->data, err->dsize, "%s: %s", rcfile, strerror
+	(errno));
+    return (-1);
+  }
+
+  eval_pv(rc, FALSE);
+  if (SvTRUE(ERRSV))
+  {
+    snprintf (err->data, err->dsize, "%s: %s", rcfile, SvPV_nolen(ERRSV));
+    return (-1);
+  }
+}
+</programlisting>
+    </para>
+    <para>
+      The bulk of this is taken from the original
+      <function>source_rc</function>; notice that we've even kept the
+      original code's brace and indentation style, a suprisingly
+      important point when contributing to third-party projects.
+    </para>
+    <para>
+      The beginning few lines are necessary for the definition of
+      <literal>BUFFER</literal>. We protect <literal>REGEXP</literal>
+      by substituting it for <literal>mutt_REGEXP</literal> while the
+      original header files do their thing, then removing the
+      substitution once they're finished. Then come the familiar
+      set-up lines for an embedded application - the Perl header files
+      and our interpreter.
+    </para>
+    <para>
+      After testing that we can open the rc file comes the good stuff:
+      we read the contents of the file into memory, and evaluate it as
+      a Perl string. This means that a Perl
+      <filename>.muttrc</filename> of the form:
+      <programlisting>
+package Mutt;
+our $folder = "/home/simon/mail/";
+our $copy = 1;
+...
+</programlisting>
+      will set the appropriate variables. Of course, if there's an
+      error, we need to tell the user about it.
+    </para>
+    <para>
+      Notice that we don't simple pass the RC file name to Perl on our
+      faked command line, because it's possible that we could be
+      sourcing more than one RC file. That's also why we test whether
+      or not we've already got a Perl interpreter instantiated before
+      creating one.
+    </para>
+    <para>
+      Since we've removed the <function>source_rc</function> function
+      from the file it gets called from, we've got to add a prototype
+      into one of the header files to keep the compiler
+      satisfied. We'll add something to <filename>mutt.h</filename>:
+      <programlisting>
+#ifdef USE_PERL
+int source_rc (const char *rcfile, BUFFER *err);
+#endif
+</programlisting>
+    </para>
+    <para>
+      Now our program won't do very much, but it should still compile,
+      and run the user's <filename>.muttrc</filename>s as Perl
+      programs. However, we don't tidy up the Perl interpreter on
+      exit; let's do that by adding a hook to
+      <command>mutt</command>'s <function>mutt_exit</function> in
+      <filename>main.c</filename>:
+      <programlisting>
+ void mutt_exit (int code)
+ {
+   mutt_endwin (NULL);
++#ifdef USE_PERL
++  perl_stop();
++#endif
+   exit (code);
+ }
+</programlisting>
+      Once again, this requires a prototype in
+      <filename>mutt.h</filename>. Our <function>perl_stop</function>
+      destructor is simply:
+      <programlisting>
+ void perl_stop(void) 
+ {
+   perl_destruct(my_perl);
+   perl_free(my_perl);
+ }
+</programlisting>
+    </para>
+  </sect1>
+  <sect1>
+    <title>Testing options</title>
+    <para>
+      That takes care we need to replace the functions which
+      actually set and test the options. We'll begin with the binary
+      options, because these are the easiest to deal with. 
+</para>
+    <para>
+      <command>mutt</command> uses four macros to get and
+      set binary options:
+      <programlisting>
+#define set_option(x) mutt_bit_set(Options,x)
+#define unset_option(x) mutt_bit_unset(Options,x)
+#define toggle_option(x) mutt_bit_toggle(Options,x)
+#define option(x) mutt_bit_isset(Options,x)
+</programlisting>
+      We're going to use a similar trick to our previous section, and
+      conditionally replace these with functions in
+      <filename>perl.c</filename>. We can fold all the conditional
+      things together, and end up with something like this:
+      <programlisting>
+#ifdef USE_PERL
+void perl_set_option(int x);
+void perl_unset_option(int x);
+void perl_toggle_option(int x);
+int perl_option(int x);
+
+int source_rc (const char *rcfile, BUFFER *err);
+
+#define set_option(x) perl_set_option(x)
+#define unset_option(x) perl_unset_option(x)
+#define toggle_option(x) perl_toggle_option(x)
+#define option(x) perl_option(x)
+#else
+#define set_option(x) mutt_bit_set(Options,x)
+#define unset_option(x) mutt_bit_unset(Options,x)
+#define toggle_option(x) mutt_bit_toggle(Options,x)
+#define option(x) mutt_bit_isset(Options,x)
+#endif
+</programlisting>
+    </para>
+    <para>
+      Now we need to define these functions in
+      <filename>perl.c</filename> and this is where things get
+      tricky. This is because the <literal>option</literal> macros do
+      not get passed the name of the option, but an integer enumerator
+      for the option; this is keyed to the actual option by the
+      <varname>MuttVars</varname> structure in
+      <filename>init.h</filename>. The
+      <function>mutt_option_index</function> allows us to go from an
+      option name to an enumerator, but we need the opposite. Let's
+      use <function>mutt_option_index</function> as a template, and
+      write us a function to get the name of a boolean value:
+      <programlisting>
+const char* mutt_option_name_bool(int o) {
+  int i;
+
+  for (i = 0; MuttVars[i].option; i++)
+    if (MuttVars[i].type == DT_BOOL && MuttVars[i].data = o)
+      return MuttVars[i].option;
+
+  return NULL;
+}
+</programlisting>
+
+      Since <varname>MuttVars</varname> is declared in the header file
+      for <filename>init.c</filename>, our
+      <function>mutt_option_name_bool</function> function needs to go
+      in there as well. Now we can think about our functions to get
+      options:
+      <programlisting>
+int perl_option(int o) {
+  char* optname = mutt_option_name_bool(o);
+  char* varname;
+  int   rv;
+
+  if (!optname) /* unknown option */
+    return 0;
+
+  varname = malloc(strlen(optname) + 7);
+  sprintf(varname, "Mutt::%s", optname); 
+  rv = SvTRUE(get_sv(varname, TRUE));
+  free(varname);
+  
+  return rv;
+}
+</programlisting>
+</para>
+    <para>
+      We form our Perl variable name by adding
+      <literal>Mutt::</literal> to the front of the option name we
+      derived from the previous step; then we use
+      <function>get_sv</function> to get the Perl-side variable, and
+      <function>SvTRUE</function> to test its boolean value. The set
+      functions can be implemented in a similar manner.
+    </para>
+    <para>
+      With that under our belt, we can turn to
+      <command>mutt</command>'s quad-state options: quad-state options
+      can be either "yes", "no", "ask but yes" and "ask but no". These
+      are handled by a similar method of enumerated constants, this
+      time with the <literal>OPT_</literal> prefix. We need to
+      redefine the <function>quadoption</function>,
+      <function>set_quadoption</function> and
+      <function>toggle_quadoption</function> functions from
+      <filename>init.c</filename>. We start once again by going from
+      the enumeration to the Perl variable name:
+    </para>
+      <programlisting>
+const char* mutt_option_name_quad(int o) {
+  int i;
+
+  for (i = 0; MuttVars[i].option; i++)
+    if (MuttVars[i].type == DT_QUAD && MuttVars[i].data = o)
+      return MuttVars[i].option;
+
+  return NULL;
+}
+</programlisting>
+    <para>
+      And now we create a <function>perl_quadoption</function>,
+      <function>perl_set_quadoption</function> and
+      <function>perl_toggle_quadoption</function> in <filename>perl.c:
+    </para>
+      <programlisting>
+int perl_quadoption(int o) {
+  char* optname = mutt_option_name_quad(o);
+  char* varname;
+  SV* option;
+
+  if (!optname) /* unknown option */
+    return 0;
+
+  varname = malloc(strlen(optname) + 7);
+  sprintf(varname, "Mutt::%s", optname); 
+  option = get_sv(varname, TRUE);
+  free(varname);
+  if (strEQ(SvPV_nolen(option), "no")) 
+    return 0;
+  else if (strEQ(SvPV_nolen(option), "yes")) 
+    return 1;
+  else if (strEQ(SvPV_nolen(option), "ask-no")) 
+    return 2;
+  else if (strEQ(SvPV_nolen(option), "ask-yes")) 
+    return 3;
+  else /* invalid value */
+    return 0;
+}
+</programlisting>
+    <para>
+      Finally, we turn to string options, the most difficult of
+      all. These are a pain because they're keyed slightly differently
+      from the other options. For instance, when the RC file parser
+      comes across <literal>attach_format</literal>, it looks it up in
+      the <varname>MuttVars</varname> structure and finds that it is
+      attached to the global variable
+      <varname>AttachFormat</varname>. Other parts of the code use
+      this variable directly.
+    </para>
+    <para>
+      This is one of the points in embedding where we just have to get
+      our hands dirty, and rip up the existing code. We replace every
+      occurrence of string option variables with a function - hence
+      <varname>AttachFormat</varname> now appears as
+      <literal>mutt_string_option("attach_format")</literal>. The function
+      has two definitions - one in <filename>init.c</filename> like
+      this:
+      <programlisting>
+char* mutt_string_option(char* o) {
+  int i;
+
+  for (i = 0; MuttVars[i].option; i++)
+    if (mutt_strcmp (o, MuttVars[i].option) == 0)
+      return *(MuttVars[i].data);
+
+  return NULL;
+}
+</programlisting>
+      and the one in <filename>perl.c</filename> like this:
+      <programlisting>
+char* string_option(char* o) {
+  char * rv;
+  char * varname = malloc(strlen(o) + 7);
+
+  sprintf(varname, "Mutt::%s", o); 
+  rv = SvPV_nolen(get_sv(varname, TRUE));
+  free(varname);
+  return rv;
+}   
+</programlisting>
+    </para>
+    <para>
+      And after all that, <command>mutt</command> should be able to
+      read configuration files in Perl!
+    </para>
+  </sect1>
+  <sect1>
+    <title>Where to from here?</title>
+    <para>
+      We've seen simple example of what it means to embed Perl into a
+      real application, as well as some of the problems that we come
+      across and how we've faced them. In most cases, it's
+      surprisingly easy to add Perl support; unfortunately, there'll
+      always be some cases where there's no option but to restructure
+      the code of the host application.
+    </para>
+    <para>
+      If you are lucky, the application will be designed with
+      embedding in mind - Apache's module support made it very easy to
+      embed Perl without disturbing too much of the code around it. In
+      our example, we really had to start from scratch, planning how
+      we were going to get Perl into the application and the interface
+      we would provide for it. Notice, however, that we kept the
+      embedding completely optional, switchable by a single
+      configuration option. Aim to do this if possible, as it further
+      minimizes the effect of your changes on the rest of the code base.
+    </para>
+    <para>
+      There's a lot more we could have done with
+      <command>mutt</command> - for instance, we could have turned
+      <command>mutt</command>'s built-in hook mechanism into a
+      callback mechanism to call Perl subroutines. We could have dealt
+      with the list-based options, using Perl arrays to hold multiple
+      values. And finally we could have tidied up our interface, using
+      Perl hashes to store the <varname>MuttVars</varname> options
+      structure, eliminating some of the lookups. But hopefully we've
+      given you a taste of how to approach the topic of embedding Perl
+      in an existing application.
+    </para>
+  </sect1>
+</chapter>
+

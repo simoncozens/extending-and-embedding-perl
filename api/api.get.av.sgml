@@ -1,0 +1,94 @@
+<sect3 id="api.get.av">
+	<title><function>get_av</function></title>
+
+	<funcsynopsis>
+	  <funcprototype>
+	  <funcdef>AV* <function>get_av</function></funcdef>
+	  <paramdef>char* <parameter>name</parameter></paramdef>
+	  <paramdef>bool  <parameter>create</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+	<para>
+Returns the <type>AV</type> variable from the Perl-side array
+<VarName>name</varname>: for instance,
+<userinput>get_av("main::lines", FALSE)</userinput> will return a
+pointer to the <type>AV</type> which represents
+<varname>@main::lines</varname> in ``Perl space''. If the boolean
+<parameter>create</parameter> is true, a new <type>AV</type> will be
+created if the Perl-side array hasn't been created yet; if it is
+false, the function will return a null pointer if the Perl-side array
+hasn't been created.
+
+<example>
+	    <title>Popping a Perl array from C</title>
+
+	    <para>
+In the core <classname>DynaLoader</classname> module, the XS function
+<function>dl_unload_all_files</function> wants to call a Perl
+subroutine <function>DynaLoader::dl_unload_file</function> on all the
+elements of the <varname>@DynaLoader::dl_librefs</varname> array. This
+is how it does it: (From
+<filename>$CORE/ext/DynaLoader/dlutils.c:39</filename>)
+
+</para>
+	    <programlistingco>
+	      <areaspec>
+		<area coords="1" id="api.dle.getcv">
+		<area coords="2" id="api.dle.getav">
+		<area coords="3" id="api.dle.avpop">
+	      </areaspec>
+	      <programlisting>
+   if ((sub = get_cv("DynaLoader::dl_unload_file", FALSE)) != NULL) {
+       dl_librefs = get_av("DynaLoader::dl_librefs", FALSE);
+       while ((dl_libref = av_pop(dl_librefs)) != &amp;PL_sv_undef) {
+          dSP;
+          ENTER;
+          SAVETMPS;
+          PUSHMARK(SP);
+          XPUSHs(sv_2mortal(dl_libref));
+          PUTBACK;
+          call_sv((SV*)sub, G_DISCARD | G_NODEBUG);
+          FREETMPS;
+          LEAVE;
+       }
+    }
+
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="api.dle.getcv">
+		  <para>
+First it calls <function>get_cv</function> (See <xref
+linkend="api.get.cv">) to attempt to fetch the subroutine.
+</para>
+		</callout>
+		<callout arearefs="api.dle.getav">
+		  <para>
+If that subroutine exists, we then call <function>get_av</function> to
+retrieve the <type>AV</type> for the Perl-side array
+<varname>@DynaLoader::dl_librefs</varname>
+</para>
+		</callout>
+		<callout arearefs="api.dle.avpop">
+<para>
+Lines 41--51 are equivalent to this piece of Perl:
+
+		  <programlisting>
+    while (defined($dl_libref = pop @dl_librefs)) {
+        DynaLoader::dl_unload_file($dl_libref)
+    }
+</programlisting>
+
+We call <function>av_pop</function> (See <xref linkend="api.av.pop">) in a
+<function>while</function> loop to pop off <type>SV</type>s from the
+array, and store them in <varname>dl_libref</varname>. The following
+lines then set up a callback to call the subroutine - see <xref
+linkend="api.call.sv">.
+</para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+</para>
+	<para>See also: <xref linkend="api.get.hv">, <xref linkend="api.get.sv">, <xref linkend="api.get.cv"></para>
+      </sect3>

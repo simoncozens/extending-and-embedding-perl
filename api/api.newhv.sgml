@@ -1,0 +1,42 @@
+<sect3 id="api.newhv">
+    <title><function>newHV </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>HV* <function>newHV</function></funcdef>
+	    <void>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> Creating a new hash </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.newHV.1">
+        <area coords="2" id="api.newHV.2">
+        <area coords="3" id="api.newHV.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.newHV.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.newHV.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.newAV">,</para>
+      </sect3>

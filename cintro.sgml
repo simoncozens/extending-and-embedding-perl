@@ -1,0 +1,1832 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+
+<chapter id="cintro">
+  <title>C for Perl Programmers</title>
+
+  <para>
+When using C and Perl together, the first thing we need to realise is
+that they are very different languages, requiring different styles and
+different thought patterns. Perl spoils programmers by doing an awful
+amount of the hard work for them; if you've never programmed in C
+before, the language can feel very barren and empty. C is close to the
+machine - Perl is close to the user.
+</para>
+
+  <para>
+That being said, Perl's syntax borrows heavily from C's, and so most
+of the elements of a C program should be familiar to a competent Perl
+programmer with a little thought and a little preparation.
+</para>
+ 
+  <sect1>
+    <title>Hello, World</title>
+    <para>
+The classic book on C programming is Kernighan and Ritchie's
+<citetitle>The C Programming Language</citetitle>, which begins with a
+program a little like this:
+</para>
+
+    <example id="cintro.hw">
+      <title>``Hello world'', from C</title>
+    <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int main(int argc, char **argv)
+    {
+      printf("hello, world\n");
+      return(0);
+    }
+</programlisting>
+    </example>
+
+    <para>
+The classic book on Perl, on the other hand, is <citetitle>Programming
+Perl</citetitle>, by Larry Wall, Tom Christiansen and Randal Schwartz.
+This begins with a fairly similar program:
+</para>
+
+    <example>
+      <title>``Hello world'', from Perl</title>
+    <programlisting>
+    print "Howdy, world!\n";
+</programlisting>
+    </example>
+
+    <para>
+First, notice that Perl is a lot more compact: there's no waffle, no
+housekeeping. We want to print something, we tell Perl to print it.
+C, on the other hand, requires a little more support from the
+programmer.
+</para>
+
+    <para>
+Let's first look at how we compile and run the C program, before
+looking at how it's constructed.
+</para>
+
+  </sect1>
+
+  <sect1>
+    <title>The C compiler</title>
+    <para>
+There's only one Perl, but there are a large variety of different C
+compilers and implementations; these can have a graphical front-end,
+such as the Microsoft Visual Studio, or a simple command-line
+interface, such as the Free Software Foundation's GCC. We'll talk
+about GCC here, since it's the most popular free compiler.
+</para>
+    <para>
+The simplest way of calling GCC is to simply give it the name of a C
+program to compile. GCC is particularly quiet; if all is well, it will
+give no output on the screen:
+</para>
+
+    <screen>
+   <prompt>%</prompt> <userinput>gcc hello.c</userinput>
+   <prompt>%</prompt>
+</screen>
+
+    <para>
+This will produce an executable called <filename>a.out</filename>
+<footnote>
+	<para>
+For historical reasons - <filename>a.out</filename> was the name of a
+particular type of executable file format.
+</para>
+      </footnote>
+in the current directory; if we run that:
+
+    <screen>
+    <prompt>%</prompt> <userinput>./a.out</userinput>
+    <computeroutput>hello, world!</computeroutput>
+</screen>
+we get our tired and worn greeting.
+</para>
+
+    <para>
+Sometimes we don't want our output called <filename>a.out</filename>,
+so we can tell GCC to give it another name with the
+<option>-o</option> option:
+</para>
+
+    <screen>
+    <prompt>%</prompt> <userinput>gcc -o hello hello.c</userinput>
+</screen>
+
+    <para>
+Perl encourages programmers to turn on the <option>-w</option> flag
+for warnings; we encourage C programmers to turn on the
+<option>-Wall</option> flag for all warnings<footnote><para>Of course,
+if you are not using <command>gcc</command> the particular option will
+be different. Ironically, <option>-Wall</option> does not turn on all
+the warnings in <command>gcc</command>; it only turns on the ones that
+are felt to be important by the <command>gcc</command>
+programmers. See the <command>gcc</command> documentation for the full
+list. If you want to make sure your program will be ANSI compliant
+rather than slipping in to using <command>gcc</command> extensions you
+may want to consider using the <option>-ansi -pedantic</option>
+option. </para></footnote>:
+</para>
+
+    <screen>
+    <prompt>%</prompt> <userinput>gcc -Wall -o hello hello.c</userinput>
+</screen>
+
+    <para>
+If you have a collection of C files that make up one program, you
+could list them all:
+</para>
+
+    <screen>
+    <prompt>%</prompt> <userinput>gcc -Wall -o bigproject one.c two.c three.c four.c</userinput>
+</screen>
+
+    <para>
+However, it's more popular to use GCC to convert each one to an
+<firstterm>object file</firstterm> (extension <filename>.o</filename>
+with GCC, equivalent to <filename>.obj</filename> files on Windows) -
+an intermediate stage in compilation - and then link all the object
+files together; this allows you to change individual files without
+needing to completely recompile everything.  To tell GCC to produce an
+object file, use the <option>-c</option> flag:
+</para>
+
+    <screen>
+      <computeroutput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o one.o -c one.c</userinput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o two.o -c two.c</userinput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o three.o -c three.c</userinput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o four.o -c four.c</userinput>
+</computeroutput>
+</screen>
+
+    <para>
+And then simply list the object files to link them all together:
+</para>
+
+    <screen>
+    <prompt>%</prompt> <userinput>gcc -Wall -o bigproject one.o two.o three.o four.o</userinput>
+</screen>
+
+    <para>
+There are more complicated ways of building large programs, using
+static and dynamic libraries, but we need not go into those for the
+examples here.
+</para>
+
+  </sect1>
+  <sect1>
+    <title>Header Files</title>
+    <para>
+The first line in the C program is an <function>include</function>
+statement: this is similar to Perl's <function>require</function> in
+that it instructs the language to go and find a library file and read
+it in. However, where Perl's <filename>.pm</filename> and
+<filename>.pl</filename> library files contain real Perl code, C's
+<filename>.h</filename> files (<firstterm>header</firstterm> files)
+contain only the <emphasis>promise</emphasis> of code - they contain
+function prototypes, and just like Perl's subroutine prototypes, these
+allow the compiler to check our use of the functions while specifying
+that the real code will come later.
+</para>
+
+    <para>
+But what function's prototype do we need, and where will the real code
+from? Well, the only function we use is <function>printf</function>,
+in line 5 of our example. Perl has a <function>printf</function>
+function too, and they are almost identical. However, all of Perl's
+functions documented in <filename>perlfunc</filename> are built in to
+the language - C, on the other hand, has <emphasis>no</emphasis>
+built-in functions. Everything is provided by a library called the
+``standard C library'', which is included when any C program is
+compiled. The <function>printf</function> function comes from a
+section of the standard C library called the ``standard IO library'',
+and to let the C compiler ensure that we are using it properly, we
+have it read the header file which contains the prototypes for the
+standard IO library, <filename>stdio.h</filename>.
+</para>
+
+    <sidebar>
+      <para>
+It's almost like <userinput>use strict</userinput> is always on - we
+can't use any function without telling C where it's coming from (or at
+least we shouldn't since if we fail to declare the prototype the
+compiler will make some assumptions that are unlikely to be correct).
+</para>
+    </sidebar>
+  </sect1>
+
+  <sect1>
+    <title>The <function>main</function> function</title>
+    <para>
+The main reason the Perl version was much smaller is because
+everything in C must be inside a function - if you have Perl code
+outside of any subroutine, it will all be executed in order. C needs
+all of this code in one place, the <function>main</function> function.
+</para>
+
+    <sidebar>
+      <para>
+What you'd call a ``subroutine'' in Perl gets called a ``function'' in
+C.
+</para>
+    </sidebar>
+
+    <para>
+When your program begins, C arranges for this function to be called.
+</para>
+
+    <para>
+This function, too, must have a prototype, and here it is
+again:</para>
+
+    <funcsynopsis>
+      <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+      <funcprototype>
+	<funcdef>int <function>main</function></funcdef>
+	<!-- one of (PARAMDEF VARARGS VOID) -->
+	<paramdef>int <parameter>argc</parameter></paramdef>
+	<paramdef>char <parameter>**argv</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+
+
+    <para>
+Perl's prototypes only tell you what type of data is coming into the
+function: <userinput>sub main($@)</userinput> tells us that the
+subroutine <function>main</function> takes a scalar and an array.
+</para>
+
+    <para>
+In C, we're not only told what's coming into the function, we're told
+what variables it should be stored in, and also what type of data the
+function should return. Here, we're returning an <type>int</type>eger,
+and we're being given an integer called <varname>argc</varname>, and
+also something called <varname>argv</varname>: we'll look at exactly
+what <userinput>char **</userinput> means later on, but you
+might be able to guess that <varname>argv</varname> is similar to
+Perl's <varname>@ARGV</varname> - an array of the command line
+parameters. <varname>argc</varname> is actually the number of elements
+in the array - that is, the number of command-line parameters passed
+to the program. (The <emphasis>arg</emphasis>ument
+<emphasis>c</emphasis>ount.) One difference between Perl and C is that
+in C <varname>argv</varname> contains the name of the command in
+element <literal>0</literal> whereas in Perl <varname>@ARGV</varname>
+does not contain the command name (that can be retrieved using
+<varname>$0</varname>).
+</para>
+
+    <sidebar>
+      <para>Some compilers support a third argument to
+      <function>main</function>:</para>
+    <funcsynopsis>
+      <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+      <funcprototype>
+	<funcdef>int <function>main</function></funcdef>
+	<!-- one of (PARAMDEF VARARGS VOID) -->
+	<paramdef>int <parameter>argc</parameter></paramdef>
+	<paramdef>char <parameter>**argv</parameter></paramdef>
+	<paramdef>char <parameter>**envp</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+
+      <para>Where <varname>envp</varname> provides access to the
+      process environment. This is not part of POSIX or the ANSI C89
+      standard and so is not included here.</para>
+    </sidebar>
+
+    <para>
+The <function>main</function> function almost always has the prototype
+given above: it should take two parameters which represent the command
+line, and return an integer value to the operating system, the
+<firstterm>exit status</firstterm>. Just as in Perl, the program may
+end implicitly, when there is no more code to execute, or explicitly,
+when the <function>exit</function> function is called. Our first
+example ended by <function>return</function>ing a value to the
+operating system, ending the <function>main</function> function. We
+could also, theoretically, allow execution to ``fall off the end'' of
+the <function>main</function> function:
+</para>
+
+    <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int main(int argc, char **argv)
+    {
+      printf("hello, world\n");
+      /* No return, just falls off. */
+    }
+</programlisting>
+
+    <para>
+Here you see the use of a C comment - comments are made up of matched
+pairs of <userinput>/*</userinput> and
+<userinput>*/</userinput><footnote><para>Many modern compilers (and
+the C99 standard) also
+implement C++ style <literal>//</literal> comments. These comments act
+just like Perl <literal>#</literal> comments.</para> </footnote>. Note that comments
+cannot be nested. This is legal:
+</para>
+
+    <programlisting>
+     /*
+        Comment out some code:
+        printf("This won't print\n");
+
+        Now carry on with the program:
+     */
+</programlisting>
+
+    <para>
+But this isn't:
+</para>
+
+    <programlisting>
+     /*
+        Comment out some code:
+        printf("This won't print\n"); /* A comment */
+
+        Now carry on with the program:
+     */
+</programlisting>
+
+    <para>
+The comment will be ended at the first <userinput>*/</userinput> -
+that is, after <userinput>A comment</userinput> - and the C compiler
+will try and compile <userinput>Now carry on...</userinput>.
+</para>
+
+    <para>
+Allowing execution to fall off the end of <function>main</function> is
+not recommended; it produces a warning to the effect that C expected
+our function to return a value, and it never did. Finally, we can also
+call <function>exit</function> explicitly:
+</para>
+
+    <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int main(int argc, char **argv)
+    {
+      printf("hello, world\n");
+      exit(0);
+    }
+</programlisting>
+
+    <para>
+The compiler makes a special exemption for <function>exit</function>
+as it knows that the function will not return.
+</para>
+</sect1>
+
+  <sect1>
+    <title>Variables and Functions</title>
+
+    <para>
+As well as having to define our function prototypes, C forces us to
+define our variables, just like the <userinput>use strict</userinput>
+mode of Perl. We can define four different types of variables:
+function parameters, automatic variables, global variables, and static
+variables.
+</para>
+
+    <sect2>
+      <title>Function parameters</title>
+      <para>
+Function parameters are declared in the prototype of a function. Let's
+look at a very simple function:
+</para>
+<example id="cintro.treble">
+	<title>Function parameters</title>
+      <programlisting>
+    int treble(int x)
+    {
+        x *= 3;
+        return x;
+    }
+</programlisting>
+</example>
+
+      <para>
+Here we've taken an integer, <varname>x</varname>, multiplied it by 3,
+and returned its new value. Note that we don't need the parentheses
+around <function>return</function> - this is because
+<function>return</function> is not really a function; it's actually a
+keyword of the language. Unlike Perl, all functions in C require
+parentheses.
+</para>
+
+      <para>
+The Perl equivalent of the above function would look like this:
+</para>
+
+      <programlisting>
+    sub treble {
+        my $x = shift;
+        $x *= 3;
+        return $x;
+    }
+</programlisting>
+
+      <para>
+And we'd call it like this:
+</para>
+      <programlisting>
+    print "Three times ten is ", treble(10), "\n";
+</programlisting>
+
+      <para>
+Well, we don't have a direct equivalent to <function>print</function>
+in C, but we can use <function>printf</function>:
+</para>
+
+      <example>
+	<title>Calling a function</title>
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="2" id="cintro.callfunc.stdlib">
+	    <area coords="10" id="cintro.callfunc.printf">
+	    <area coords="11" id="cintro.callfunc.exit">
+	  </areaspec>
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+
+    int treble(int x) {
+        x *= 3;
+        return x;
+    }
+
+    int main(int argc, char** argv) {
+        printf("Three times ten is %d\n", treble(10));
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="cintro.callfunc.stdlib">
+	      <para>We include <filename>stdlib.h</filename> so that
+we can use the <varname>EXIT_SUCCESS</varname> macro.</para>
+	    </callout>
+	    <callout arearefs="cintro.callfunc.printf">
+	      <para>The <function>printf</function> function has
+	      similar functionality to the Perl version. The
+	      <literal>%d</literal> format is used to format a signed integer
+	      in both Perl and C.</para>
+	    </callout>
+	    <callout arearefs="cintro.callfunc.exit">
+	      <para>Rather than explicitly returning a zero here we
+	      use the <varname>EXIT_SUCCESS</varname> macro provided
+	      in ANSI C. This is more explicit than using a naked
+	      zero. <varname>EXIT_FAILURE</varname> can also be used
+	      if required.</para>
+	    </callout>
+	  </calloutlist>
+</programlistingco>
+      </example>
+
+      <para>
+As we mentioned above, function prototypes must appear before they are
+called, so that the compiler can check the types: hence the definition
+of <function>treble</function> must appear before the
+<function>main</function> function calls it. Otherwise, C assumes that
+the return value will be <type>int</type>, and you will receive a
+warning from the compiler if warnings are turned on.
+</para>
+
+      <para>
+Function parameters act just like lexical variables in Perl
+(<function>my</function> variables); they have the same scope as their
+enclosing block (which is always the function), and they are private
+to that scope.
+</para>
+    </sect2>
+
+    <sect2>
+      <title>Automatic variables</title>
+      <para>
+Automatic variables have similar scoping properties to function
+parameters, but they can appear in any block. They are directly
+equivalent to Perl's lexical variables.
+</para>
+
+      <para>
+You declare an automatic variable by simply listing its type and its
+name; however, declaring automatic variables <emphasis>must</emphasis>
+happen before any statements in the block. So, you may say this:
+</para>
+
+      <example>
+	<title>Automatic variables</title>
+      <programlisting>
+    int main (int argc, char** argv) {
+        int number;
+        number = 4;
+
+        printf("Hello world\n");
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+      </example>
+
+      <para>
+But you may not say this:
+</para>
+
+      <programlisting>
+    int main (int argc, char** argv) {
+        printf("Hello world\n");
+
+        int number;
+        number = 4;
+
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+
+      <para>
+You can also initialize your automatic variables when you declare
+them, by saying, for instance <userinput>int number =
+4;</userinput>. You may also start a new block to declare an automatic
+variable:
+</para>
+
+      <programlisting>
+    int some_function(int parameter) {
+        int one = 1;
+
+        {
+            int two = 2;
+            printf("one = %d, two = %d\n", one, two);
+        }
+
+        /* "two" is out of scope here */
+        return one;
+    }
+</programlisting>
+
+      <para>
+Because of this property, it's likely that most of your temporary
+variables - in fact, most of the variables you will use - will tend to
+be automatic variables. But why are they called automatic variables?
+Since C knows their scope and their type at compile time, it can
+automatically make memory allocation for them.
+</para>
+
+      <para>
+Just like in Perl, if we have two lexical variables with the same
+name, only the most recently-declared one is in scope, ``hiding'' the
+older one:
+</para>
+
+      <programlisting>
+    int main(int argc, char** argv) {
+        int number = 10;
+        {
+            int number = 20;
+            printf("%d", number); /* Will print "20" */
+        }
+        return number;
+    }
+</programlisting>
+
+      <para>However, unlike perl in <classname>strict</classname>
+      mode, many C compilers may not give us a warning in this
+      case.</para>
+
+    </sect2>
+
+    <sect2>
+      <title>Global variables</title>
+      <para>
+If a variable is declared outside of a function, it's available to all
+the functions in that file:
+</para>
+
+      <example id="cintro.globvarex">
+	<title>Global Variables</title>
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+
+    int counter = 0;
+
+    void bump_it() {
+        counter++;
+    }
+
+    int main(int argc, char** argv) {
+        printf("The value of counter is %d\n", counter);
+        bump_it();
+        bump_it();
+        printf("The value of counter is %d\n", counter);
+        bump_it();
+        printf("The value of counter is %d\n", counter);
+
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+      </example>
+
+      <para>
+The function <function>bump_it</function> modifies the global variable
+<varname>counter</varname>, which <function>main</function>
+reads. <function>bump_it</function> is declared to return type
+<type>void</type> - this just means ``it will not return anything'';
+think of ``void context'' in Perl.
+</para>
+
+      <para>
+It's also possible to share a global variable across multiple files,
+by declaring it once in one file, and then prefixing the declaration
+in other files with the <userinput>extern</userinput> keyword. For
+instance, if we have a file called <filename>count1.c</filename>
+containing the declaration and <function>main</function> function from
+above:
+</para>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+
+    int counter = 0;
+
+    void bump_it();
+
+    int main(int argc, char** argv) {
+        printf("The value of counter is %d\n", counter);
+        bump_it();
+        bump_it();
+        printf("The value of counter is %d\n", counter);
+
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+
+      <para>
+(We still need to provide the prototype to
+<function>bump_it</function>, just as <filename>stdio.h</filename>
+provides the prototype for <function>printf</function>.) and also a
+file called <filename>count2.c</filename> containing the
+<function>bump_it</function> function:
+</para>
+
+      <programlisting>
+    extern int counter;
+
+    void bump_it() {
+        counter++;
+    }
+</programlisting>
+
+      <para>
+We can now compile these files into object files and link them
+together, like this:
+</para>
+
+      <programlisting>
+    <prompt>%</prompt> <userinput>gcc -Wall -o count1.o -c count1.c</userinput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o count2.o -c count2.c</userinput>
+    <prompt>%</prompt> <userinput>gcc -Wall -o count count1.o count2.o</userinput>
+</programlisting>
+
+      <para>
+The function in <filename>count2.c</filename> knows that it should be
+able to access a global variable called <varname>counter</varname>,
+which is declared ``externally'' - somewhere else in the program. C
+finds the global declaration of <varname>counter</varname> in
+<filename>count1.c</filename>, and so the function can access the global
+variable.
+</para>
+    </sect2>
+
+    <sect2>
+      <title>Static Variables</title>
+      <para>
+The final type of variables on offer are static variables; these
+are variables which keep their value between calls to a function. One
+way to do something like this in Perl would be:
+</para>
+
+      <programlisting>
+    {
+        my $x;
+        sub foo {
+            return ++$x;
+        }
+    }
+</programlisting>
+
+      <para>
+or even to use a closure. But C does not allow us to declare bare
+blocks in the same way as Perl does; the C equivalent would look like
+this: 
+</para> 
+
+      <example>
+	<title>Static variables</title>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int foo () {
+        static int x = 0;
+        return ++x;
+    }
+
+    int main(int argc, char** argv) {
+        int i;
+
+        for (i=1; i&lt;=10; i++)
+            printf("%d\n",foo());
+
+        return 0;
+    }
+</programlisting>
+      </example>
+
+      <para>
+There are a few things to notice here:
+<itemizedlist>
+	  <listitem>
+	    <para>To maintain a variable's state between calls,
+	    declare the variable <userinput>static</userinput>.
+ </para>
+	  </listitem>
+	  <listitem>
+	    <para>There is no range operator, nor a special variable
+	    like <varname>$_</varname>, nor is there a one-argument
+	    <function>foreach</function> loop to loop over an array;
+	    we only have the three-argument <function>for</function>.
+</para>
+	  </listitem>
+	  <listitem>
+	    <para>
+Calls to functions we declare <emphasis>must</emphasis> contain
+parentheses, even when they take no parameters; otherwise, we end up
+taking the address of the function! (It's the difference between
+<userinput>&amp;mysub</userinput> and <userinput>\&amp;mysub</userinput>.)
+</para>
+	  </listitem>
+	  <listitem>
+	    <para>
+If the code inside a <function>for</function> loop is only one
+statement, we do not need to enclose it in a block. If it's any more
+than one statement, it must be enclosed in curly braces. This also
+applies for the other control structures, <function>if</function> and
+<function>while</function>.
+</para>
+	  </listitem>
+	</itemizedlist>
+</para>
+
+      <para>
+C has no equivalent to Perl's dynamic scoping; (variables with
+<function>local</function>) this is something that the Perl internals
+attempt to get around, and we'll see how that's done in later
+chapters.
+</para>
+</sect2>
+
+</sect1> 
+
+  <sect1>
+    <title>Data Types</title>
+    <para>
+If <varname>argc</varname> is an <type>int</type>eger and
+<varname>argv</varname> is an array of strings, what other data types
+do we have? Perl only supports three types of variables (ignoring
+globs for now): scalars for single data items, arrays for storing many
+scalars and hashes for keyword/scalar pairs. A scalar is simply a
+<emphasis>thing</emphasis> that can be passed around and processed but
+the type of the scalar is not important. In C, the compiler needs to
+know whether you are using a number or a character and the type of
+number you are using (integer, floating point number, double precision
+floating point number). C supports quite a variety of data types
+which can vary from machine to machine, and the Perl internals define
+some special types which give us a machine-independent environment.
+</para>
+
+    <sect2>
+      <title>C Types</title>
+
+    <para>
+First, let's look at the basic C types:
+</para>
+
+    <sect3>
+      <title><type>int</type></title>
+      <para>
+The <type>int</type> type represents positive or negative integer
+values. C's data types are defined primarily, however, not by what
+they hold but by how many bits are used to represent them, since this
+defines their limits.
+</para>
+
+      <para>
+For example, an <type>int</type> on my machine is represented using 32
+bits of memory. One of these is used as a ``sign bit'' to determine
+whether or not the value is positive or negative, and the other 31
+bits are used to store the number; this means it has a range from
+-2147483647 to 2147483647. We can tell C to not use a ``sign bit'' and
+have all 32 bits available for storage by declaring an <type>unsigned
+int</type>, giving us a range from 0 to 4294967295.
+</para>
+
+      <para>
+I say ``on my machine'' because the size of these types is not
+guaranteed, nor is it defined by the C language; a compiler for a 64-bit
+processor may choose to use 64 bits to represent an <type>int</type>,
+although it may not. While the C standard specifies the minimum size, it
+doesn't guarantee the actual size. (This is why the Perl internals
+define their own types, to guarantee sizes.) There are a number of ways
+to determine the limits. The easiest is to set all the bits in an
+unsigned variable to 1, and examine the number produced. Just as in Perl
+we can set all the bits to 1 using the bitwise NOT operator,
+<userinput>~</userinput>:
+</para>
+
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+
+    int main (int argc, char** argv) {
+        unsigned int i = ~0;
+
+        printf("i is %u\n", i);
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+
+      <para>
+(Note that we use <userinput>%u</userinput> as the
+<function>printf</function> format specifier for an unsigned integer -
+this is the same as in Perl.)
+</para>
+
+      <para>
+This tells me that the highest unsigned integer is 4294967295, and so
+the highest signed integer must be one less than half of 1+4294967295.
+</para>
+
+      <para>
+The other method is slightly more complex, but more flexible. The
+header file <filename>limits.h</filename> defines some constants (See
+<xref linkend="cintro.macros"> for how this happens) which tell us the limits
+of the various sizes:
+</para>
+
+      <example>
+	<title>Finding limits with <filename>limits.h</filename></title>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;stdlib.h&gt;
+    #include &lt;limits.h&gt;
+
+    int main (int argc, char **argv) {
+        printf("The maximum signed integer is %d\n", INT_MAX);
+        printf("The minimum signed integer is %d\n", INT_MIN);
+        printf("The maximum unsigned integer is %u\n", UINT_MAX);
+        /* UINT_MIN is not declared because it's obviously 0! */
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+      </example>
+
+      <para>Produces:
+<screen>
+<computeroutput>
+    The maximum signed integer is 2147483647
+    The minimum signed integer is -2147483648
+    The maximum unsigned integer is 4294967295
+ </computeroutput>
+</screen>
+</para>
+
+      <para>
+You should note that the <classname>POSIX</classname> module in Perl
+can also define these constants: (And notice how similar Perl with
+<userinput>use POSIX</userinput> can be to C!)
+</para>
+
+      <programlisting>
+    use POSIX;
+    printf("The maximum signed integer is %d\n", INT_MAX);
+    printf("The minimum signed integer is %d\n", INT_MIN);
+    printf("The maximum unsigned integer is %u\n", UINT_MAX);
+</programlisting>
+
+    </sect3>
+
+    <sect3>
+      <title><type>char</type></title>
+
+      <para>
+Characters are nothing more than numbers. A character, to C, is merely
+an integer of at least 8 bits; depending on your architecture and compiler, it
+may be signed or unsigned. Since we're
+more used to thinking of characters running from character 0 to
+character 255, we can use <type>unsigned char</type> to get that
+range.
+</para>
+
+      <para>
+Since characters are just numbers, a single-quoted character in C acts
+like the <function>ord</function> operator in Perl - it produces an
+integer representing the character set codepoint of that character:
+</para>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int main(int argc, char** argv) {
+        printf("%d\n", '*');
+        return(EXIT_SUCCESS);
+    }
+</programlisting>
+
+      <para>
+This is equivalent to Perl's <userinput>print ord("*"),"\n"</userinput>. 
+Similarly, we can turn numbers into characters with the
+<function>printf</function> format specifier
+<userinput>%c</userinput>, just as in Perl:
+</para>
+
+      <example id="cintro.chardata">
+	<title>Manipulating <type>char</type> data</title>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+
+    int main(int argc, char** argv) {
+        unsigned char c;
+
+        /* print "Character $_ is ", chr($_), "\n" for 0..255; */
+        for (c=0; c &lt; 255; c++)
+            printf("Character %d is %c\n", c, c);
+
+        return (EXIT_SUCCESS);
+    }
+</programlisting>
+      </example>
+
+      <para>
+Why do we say <userinput>c &lt; 255</userinput> instead of
+<userinput>i &lt;= 255</userinput>? Because of the way
+<varname>i</varname> is stored, it can only ever be between 0 and 255,
+so our termination clause is useless. When a C value overflows the
+storage of its variable, it ``wraps around'' - the higher bits are
+truncated. For instance:
+</para>
+
+      <figure>
+	<title>Overflowing storage</title>
+	<screen>
+                       |87654321| - 8 bits of an unsigned char
+                       | Binary |
+    c = 254            |11111110|
+    c++                |11111111|
+    c = 255            |11111111|
+    c++               1|00000000| - Overflow
+    c = 0              |00000000| - Truncation
+</screen>
+      </figure>
+
+      <para>
+So, for an <type>unsigned char</type>, 255+1 = 0, and since 0 is less
+than or equal to 255, our program would never have terminated.
+</para>
+    </sect3>
+
+    <sect3>
+      <title>short</title>
+      <para>
+Sometimes an <type>int</type> stores more bits than you need, so you
+may want to use a smaller type. A <type>short</type> (or <type>short
+int</type>) is usually half the size of an <type>int</type>: the
+limits <constant>SHRT_MAX</constant> and <constant>SHRT_MIN</constant>
+should tell you the size.
+</para>
+
+      <programlisting>
+    printf("The maximum short is %d\n", SHRT_MAX);
+    printf("The minimum short is %d\n", SHRT_MIN);
+</programlisting>
+
+      <para>
+(And you can run that in C or Perl at your choice...)
+</para>
+
+      <para>
+<type>short</type>s are available in signed and unsigned flavours, but
+are only rarely used.
+</para>
+    </sect3>
+
+    <sect3>
+      <title><type>long</type></title>
+      <para>
+For representing larger numbers, <type>long</type>s (<type>long
+int</type>s) are sometimes available. On some machines, these are
+twice the width of an <type>int</type>; however, on many machines
+<type>long</type>s and <type>int</type>s are equivalent. The new C standard,
+C99, also allows <type>long long ints</type>, which are twice as wide
+again. Both types are available as <type>unsigned</type> variants.
+</para>
+    </sect3>
+
+    <sect3>
+      <title><type>float</type>
+</title>
+      <para>
+The world is not purely made up of integers; there are also floating
+point values, and these need a separate data type to hold them. (Perl
+is happy to have us put strings, integers and floating point values in
+the same scalar, but C forces us to split them up.)
+</para>
+
+	<para>
+Floating point types are always signed in C, and a floating point
+value is represented by two numbers, the <firstterm>exponent</firstterm>
+(<varname>e</varname>) and the <firstterm>mantissa</firstterm>
+(<varname>m</varname>) such that the value to be stored is
+<inlineequation>
+<inlinemediaobject>
+<imageobject>
+<imagedata fileref="mantissa-exponent.eps" format="eps" >
+</imageobject>
+<imageobject>
+<imagedata fileref="mantissa-exponent.gif" format="gif" >
+</imageobject>
+<textobject>
+<phrase>n=m2<superscript>e</superscript></phrase>
+</textobject>
+</inlinemediaobject>
+</inlineequation>. The choice of the number of bits for exponent and
+mantissa determines the accuracy and the range of the type.  It is
+important to remember that a floating point number can not represent
+every number with complete accuracy. Some numbers (for example
+<literal>1/3</literal> and <literal>1/7</literal>) can never be
+represented perfectly regardless of the number of bits in the float
+and this has to be carefully considered if accuracy of numerical
+calculations is important to you.
+</para>
+
+      <para>
+You must also carefully consider the difference between floating point
+operations and integer operations. Consider the following program:
+</para>
+
+
+<programlisting>
+#include &lt;stdio.h&gt;
+
+int main (int argc, char** argv) {
+  float fraction1 = 1 / 4;
+  float fraction2 = 1 / 4.0;
+  printf("%f %f\n", fraction1, fraction2);
+
+  return 0;
+}
+</programlisting>
+<para>
+When you run this program you may be surprised to get the following output:
+</para>
+<screen>
+0.000000 0.250000
+</screen>
+<para>
+Here <varname>fraction2</varname> correctly has a value of
+<literal>0.25</literal> but <varname>fraction1</varname> has a value
+of <literal>0.00</literal>. This seeming inconsistency is a product of
+the compiler; when the compiler sees literal numbers it has to assign
+a type to them. As there is no indication to the contrary, numbers that
+look like integers are assigned to integer types and numbers that look
+like floating point numbers are assigned floating point types.  This
+means that the compiler translated the above assignments to
+
+<programlisting>
+float fraction1 = (int)1 / (int)4;
+float fraction2 = (int)1 / (float)4.0;
+</programlisting>
+</para>
+
+<para>
+When there is an arithmetic operation between two variables of
+different types the compiler converts the variables to the highest
+type using the rules given in <xref linkend="cintro.casting" >. In this case,
+and integer is converted to a <type>float</type> when combined with
+another <type>float</type>:
+</para>
+<programlisting>
+float fraction1 = (int)1 / (int) 4;
+float fraction2 = (float)1.0 / (float)4.0;
+</programlisting>
+<para>
+Now for the trick: the division operator performs integer division
+(that is, effectively, <computeroutput>int(1/4)</computeroutput>) when
+both of its operands are integers, and floating point division when
+its operands are <type>float</type>s. Hence, the value that's stored
+into <varname>fraction1</varname> is the result of
+<emphasis>integer</emphasis> division of <literal>1</literal> and
+<literal>4</literal>, and the value that's stored into
+<varname>fraction2</varname> is the floating point division which
+keeps the fractional part.
+</para>
+
+	<para>
+The moral of the story is: if you want a floating point result from
+your code, make sure that at least one of your operands is a
+<type>float</type>.
+</para>
+
+    </sect3>
+
+    <sect3>
+      <title><type>double</type></title> 
+
+<para> 
+<type>double</type>s are, very simply, high-precision
+<type>float</type>s; they contain a larger exponent, although how much
+larger is unspecified - on this system, doubles can range from
+<literal>2.2250738585072e-308</literal> all the way up to
+<literal>1.79769313486232e+308</literal>; that's 10 bits of exponent
+and 53 bits of mantissa.  
+</para>
+
+	<para>
+On some systems, <type>long double</type>s may be available for even
+more bits.
+</para>
+    </sect3>
+
+    <sect3>
+      <title><type>void</type></title> 
+      <para>
+<type>void</type> is a special data type which is used, as we've
+seen in <xref linkend="cintro.globvarex" > above, to indicate that a function
+has no return value and should be called in void context.
+</para>
+
+	<para>
+As we'll see in the next chapter, the <type>void</type> type is also
+used as a ``generic type'' to enable data of any type to be passed to
+and from a function.
+</para>
+    </sect3>
+    </sect2>
+    <sect2 id="cintro.typedef">
+      <title>Types defined in Perl</title>
+      <para>
+To get around the implementation-specific nature of the limits of the
+basic C types, Perl defines a number of types which are guaranteed to
+have certain properties. Perl also defines a number of far more
+complex types, which we'll look at in Chapter 3, which allow us to
+represent Perl scalars, hashes and so on. For now, we'll examine the
+simple types from which almost all variables inside Perl are made
+up. For guaranteed portability, you should use these types when your
+code interfaces with Perl, rather than the types above.
+</para>
+
+      <sect3>
+	<title><type>I8</type>, <type>I16</type>, <type>I32</type></title>
+
+	<para>
+This set of types are used for different sizes of integers, and have
+the property that they are guaranteed to hold <emphasis>at
+least</emphasis> the number of bits that their name implies: an
+<type>I8</type> will definitely hold 8 bits, (and might hold more) and
+so can be used to store values from -128 to 127. An <type>I8</type> is
+almost always equivalent to a <type>char</type>.
+</para>
+
+	<para>
+Each of these types has a corresponding unsigned type:
+<type>U8</type>, <type>U16</type>, and <type>U32</type>. On 64-bit
+machines, <type>I64</type> and <type>U64</type> are also available. 
+</para>
+
+	<para>
+You may ask how these types are defined: C has a special convention
+for defining types, the <userinput>typedef</userinput> operator, which
+allows us to provide aliases for type names. Here is <xref
+linkend="cintro.chardata" > reimplemented using <userinput>typedef</userinput>
+and <type>U8</type>.
+</para>
+
+	<example>
+	  <title>Using <userinput>typedef</userinput></title>
+	  <programlisting>
+    #include &lt;stdio.h&gt;
+
+    typedef unsigned char U8;
+
+    int main(int argc, char** argv) {
+        U8 i;
+
+        for (i=0; i &lt; 255; i++)
+            printf("Character %d is %c\n", i, i);
+
+        return 0;
+    }
+</programlisting>
+	</example>
+      </sect3>
+
+      <sect3>
+	<title><type>IV</type>, <type>UV</type></title>
+	<para>
+An <type>IV</type>, and its unsigned counterpart <type>UV</type>, is
+the type used to represent integers used in a Perl program. When you
+say <userinput>$a = 123456;</userinput>, the <literal>123456</literal>
+is stored in an <type>IV</type> or <type>UV</type>. The reason why
+Perl uses an <type>IV</type> rather than any guaranteed-size types of
+the previous section is that <type>IV</type> provides another
+guarantee: it's big enough to be used to store a
+<firstterm>pointer</firstterm>, which is the C equivalent of a
+reference. (We'll look into pointers in a lot more detail in the next
+chapter, and see how they relate to Perl references in Chapter 3.)
+</para>
+
+	<remark>Mention that in general IV is an I32? Maybe not.</remark>
+
+      </sect3>
+
+      <sect3>
+	<title><type>NV</type></title>
+	<para>
+An <type>NV</type> is the type used to represent floating-point
+numbers in a Perl program; once again, this is guaranteed to be able
+to store a pointer, although it's hardly ever used to do so. This is
+at least a <type>double</type>.
+</para>
+      </sect3>
+
+      <sect3>
+	<title><type>STRLEN</type></title>
+	<para>
+Finally in our tour of types, <type>STRLEN</type> is an unsigned
+integer type which tells us how big something is in bytes; it's
+usually used to represent the size of a string.
+</para>
+      </sect3>
+
+    </sect2>
+
+  </sect1>
+
+  <sect1 id="cintro.casting">
+    <title>Casting</title>
+
+    <para>
+C uses very simple rules to convert values between types: data will be
+converted when it moves from a `smaller' type to a `bigger' type, such
+as from an <type>int</type> to a <type>float</type>, but when
+converting back down, only the portion of the representation which
+`fits' in the smaller type will be retained. (This may or may not
+trigger a warning from the compiler about information being lost.) For
+instance, the following code:
+
+<programlisting>
+        int x = INT_MAX;
+        short int y;
+        y = x;
+</programlisting>
+
+will leave <varname>y</varname> equal to <literal>-1</literal>, because
+all of the bits in the smaller type will be set. 
+</para>
+
+    <para>
+The conversion happens implicitly when two differently-typed values
+are the operands to the arithmetic operators, or when one assigns one
+value to a variable of different type; it also happens when the type
+of a value passed as a function parameter is different to what the
+function's prototype says it should be.
+</para>
+
+    <para>
+You can also force the explicit conversion to one particular type by
+the use of the <firstterm>cast</firstterm> operator; simply put the
+target type in parentheses before the expression you wish to
+cast. This is rarely used for real values, but is extremely important
+when we come to examine pointers and structures.
+</para>
+
+  </sect1>
+
+  <sect1>
+    <title>Control Constructs</title>
+    <para>
+Because Perl borrowed its syntax heavily from C, C's control
+constructs should be familar to you: we have <userinput>if (...) 
+{...}</userinput>, <userinput>while (...) {...}</userinput>,
+<userinput>do { ... } while (...)</userinput>and
+<userinput>for(;;;)</userinput>, and these all work the same way they
+do in Perl.
+</para>
+    <sect2>
+      <title>Statements and blocks</title>
+      <para>
+In C one difference, however, is that one may omit the braces from a block
+under a control construct if that block contains only one
+statement. For instance, we may write:
+
+<programlisting>
+     if (a > b) {
+         max = a;
+     } else {
+         max = b;
+     }
+</programlisting>
+
+as:
+
+<programlisting>
+     if (a > b)
+         max = a;
+     else
+         max = b;
+</programlisting>
+
+</para>
+
+      <para>
+A control construct itself counts as ``only one statement'', so we may
+also write such things as this program, to count the number of
+printable characters in the character set:
+</para>
+
+      <programlisting>
+    #include &lt;stdio.h&gt;
+    #include &lt;ctype.h&gt;
+
+    int main(int argc, char **argv)
+    {
+        unsigned char i;
+        int printables = 0;
+
+        for (i=0; i&lt;255; i++)
+            if (isprint(i))
+                printables++;
+
+        printf("%i printable characters\n", printables);
+        return (EXIT_SUCCESS);
+    }
+</programlisting>
+
+      <para>
+The function <function>isprint</function>, whose prototype is in
+<filename>ctype.h</filename> tells us whether or not a character, in
+the range 0 to 255, is printable.
+</para>
+
+      <para>
+When using nexted control structures without braces like this, it's
+important to be aware of the `<firstterm>dangling else</firstterm>'
+problem; that is, in the following code, which <userinput>if</userinput>
+does the <userinput>else</userinput> belong to?
+
+<programlisting>
+     if (utf)
+        if (!haslen) 
+            len = getlength(string);
+     else
+        len = 1;
+</programlisting>
+
+Well, the indentation shows us what we <emphasis>mean</emphasis> - we
+want <varname>len</varname> to be <literal>1</literal> if
+<varname>utf</varname> is not set - but that's not how the compiler
+sees it; what really happens looks like this:
+
+<programlisting>
+     if (utf)
+        if (!haslen) 
+            len = getlength(string);
+        else
+            len = 1;
+</programlisting>
+</para>
+
+      <para>
+Editors such as <productname>Emacs</productname> will automatically
+indent code to the correct column when you press <keycap>Tab</keycap>,
+but it's best to use braces in such cases anyway to reduce confusion.
+</para>
+    </sect2>
+    <sect2>
+      <title><userinput>break</userinput> and
+      <userinput>continue</userinput></title>
+      <para>
+Perl's <userinput>last</userinput> control statement is spelt
+<userinput>break</userinput> in C. Here's a function which cuts off a
+string after the first space character:
+</para>
+
+<example id="cintro.breakex">
+	  <title><userinput>break</userinput>ing out of a look</title>
+
+<programlisting>
+     int token (char s[]) {
+         unsigned int len = strlen(s);
+         int i;
+
+         for (i=0; i &lt; len; i++)
+             if (isspace(s[i]))
+                 break;
+
+         s[i] = '\0';
+         return i;
+     }
+</programlisting>
+<para>
+When a whitespace character (space, tab, new line, etc.) is found, the
+<userinput>break</userinput> statement makes C immediately leave the
+<userinput>for</userinput> loop, and makes that character the end of
+the string. We return the character offset as the new length of the
+string; in the next chapter, we'll see how we can use this to get at
+the rest of the string.
+</para>
+	</example>
+
+
+
+      <para>
+Similarly, <userinput>next</userinput> is replaced by
+<userinput>continue</userinput>; this fragment of code (modified from
+<filename>sv.c</filename> in the Perl core) only processes non-zero
+elements in an array:
+
+<programlisting>
+   for (i=0; i &gt; oldsize; i++) {
+        if (!ary[i])
+            continue;
+        curentp = ary + oldsize;
+        ...
+   }
+</programlisting>
+</para>
+
+      <para>
+There is no equivalent to Perl's <userinput>redo</userinput>. If you
+really need it, you can use <userinput>goto</userinput> and labels
+just like in Perl, but, just like in Perl, ten times out of ten, you don't.
+</para>
+    </sect2>
+
+    <sect2>
+      <title><userinput>switch</userinput></title>
+      <para>
+One control structure that Perl doesn't have<footnote>
+	  <para>Although Damian Conway's <classname>Switch</classname>
+module provides an implementation</para>
+	</footnote> is the <userinput>switch</userinput>
+statement. This allows you to test an expression against multiple
+(constant) values. It's a lot easier than using <userinput>else
+if</userinput> over and over again. Here's an example from the Perl
+core, when Perl has seen one of the <userinput>-X</userinput> file
+test functions, and is trying to work out which one you mean. It has
+the next character in <varname>tmp</varname>, and is choosing from a
+number of constants to set the value of <varname>fstest</varname>:
+</para>
+
+<programlisting>
+     switch (tmp) {
+        case 'r': 
+                  ftst = OP_FTEREAD;    
+                  break;
+
+        case 'w': 
+                  ftst = OP_FTEWRITE;   
+                  break;
+
+        case 'x': 
+                  ftst = OP_FTEEXEC;    
+                  break;
+
+        case 'o': 
+                  ftst = OP_FTEOWNED;   
+                  break;
+        ...
+     }
+</programlisting>        
+
+<para>
+Notice that we <userinput>break</userinput> after every single case;
+this is because <userinput>switch</userinput> is, in fact, a glorified
+computed <userinput>goto</userinput>. If we don't break, the program
+control will ``fall through'' to the next case:
+<programlisting>
+     int i = 0;
+
+     switch (i) {
+        case 0:
+                 printf("It's 0\n");
+        case 1:
+                 printf("It's 1\n");
+        case 2:
+                 printf("It's 2\n");
+     }
+</programlisting>
+
+The above code will actually execute <emphasis>all three</emphasis> print
+statements. Sometimes this really is what we want, but we should take
+care to mark the ``fall through'' if we're likely to forget it. Here's
+an example of how fall through could be useful. Note that we're
+actually falling through the cases which have no statements as well;
+if the character is <literal>1</literal>, then we fall through cases
+<literal>2</literal>, <literal>3</literal>, ... <literal>7</literal>.
+</para>
+
+      <programlisting>
+      switch (c) { /* "c" is some character"
+         case '0': case '1': case '2': case '3':
+         case '4': case '5': case '6': case '7':
+                   could_be_octal = 1;
+                   /* Fall through */
+
+         case '8': case '9':
+                   could_be_dec = 1;
+                   /* Fall through */
+
+         case 'A':
+         case 'B':
+                   /* This is actually fall through, too */ 
+         case 'C':
+         case 'D':
+         case 'E':
+         case 'F':
+                   could_be_hex = 1;
+       }
+</programlisting>
+
+      <remark>Reviewer suggested that we show the equivalent code in perl</remark>
+
+    </sect2>
+  </sect1>
+
+  <sect1 id="cintro.macros">
+    <title>Macros and the C Preprocessor</title>
+     <para>
+Before your C code reaches the compiler, it goes through an
+intermediary program, the <firstterm>preprocessor</firstterm>. We've
+already said that header files such as <filename>stdio.h</filename>
+and <filename>ctype.h</filename> contain function prototypes - the
+preprocessor is responsible for inserting the content of those files
+into the current program. This is done with the
+<userinput>#include</userinput> preprocessor directive:
+
+<programlisting>
+    #include "header.h"
+</programlisting>
+
+will insert the contents of the file <filename>header.h</filename>
+from the current directory into the copy of your source code that is
+passed to the compiler.  
+</para>
+    <sidebar>
+      <para>Why did we have this:
+<programlisting>
+    #include "header.h"
+</programlisting>
+but previously this?
+<programlisting>
+    #include &lt;stdio.h&gt;
+</programlisting>
+</para>
+      <para>
+The difference is that by using quotes, we are telling the
+preprocessor that the file <filename>header.h</filename> is in our
+current directory, but that <filename>stdio.h</filename> is somewhere
+in the system and it should go and look for it; the preprocessor has a
+built-in search path which includes the locations of the headers for
+the standard library.
+</para>
+    </sidebar>
+
+    <para>
+Header files may themselves use <userinput>#include</userinput>
+directives to pull in other files; if we look at the pre-processed
+output to our ``hello world'' example, <xref linkend="cintro.hw" >, we would
+see that many different header files have been included:
+
+<programlisting>
+    # 1 "/usr/include/stdio.h" 1 3
+    # 1 "/usr/include/features.h" 1 3
+    # 142 "/usr/include/features.h" 3
+    # 208 "/usr/include/features.h" 3
+    # 1 "/usr/include/sys/cdefs.h" 1 3
+    # 65 "/usr/include/sys/cdefs.h" 3
+    # 283 "/usr/include/features.h" 2 3
+    # 1 "/usr/include/gnu/stubs.h" 1 3
+    # 311 "/usr/include/features.h" 2 3
+    # 27 "/usr/include/stdio.h" 2 3
+    ...
+</programlisting> 
+</para>
+
+    <para>
+As well as including header files, we may use the preprocessor to
+define <firstterm>macros</firstterm>, pieces of text which will be
+substituted in our source. The syntax for a macro is:
+<programlisting>
+    #define <replaceable>text</replaceable> <replaceable>replacement</replaceable>
+</programlisting>
+
+For instance, we may use macros to give meaningful names to particular
+constants:
+</para>
+
+    <programlisting>
+    #define MAX_RECURSE  64
+    #define FAILURE      -1
+
+    int recursive ( ... ) {
+        static level=0;
+
+        if (++level &gt; MAX_RECURSE) {
+            printf("! Maximum recursion level reached!\n");
+<remark>Should be level minus minus</remark>
+            level--;
+            return FAILURE;
+        }
+ 
+        /* Do something here */
+
+        return level--; 
+    }
+</programlisting>
+
+    <para>
+Macros may also be given arguments, so they appear to be like
+functions; for instance, the <function>isspace</function> we used in
+our <userinput>break</userinput> example, <xref linkend="cintro.breakex" >, is
+typically defined as a macro, like this:
+
+<programlisting>
+#define isspace(c)  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) =='\r' || (c) == '\f')
+</programlisting>
+
+The replacement text will be placed into our program wherever we use
+<function>isspace</function>, and the <varname>c</varname> is replaced
+by whatever argument we gave to it. Thus, when our example reached the
+compiler, it probably looked a little more like this;
+
+<programlisting>
+     int token (char s[]) {
+         unsigned int len = strlen(s);
+         int i;
+
+         for (i=0; i &lt; len; i++)
+             if (((s[i]) == ' ' || (s[i]) == '\t' || (s[i]) == '\n' || (s[i]) =='\r' || (s[i]) == '\f'))
+                 break;
+
+         s[i] = '\0';
+         return i;
+     }
+</programlisting>
+</para>
+    <sidebar>
+      <para>
+Because the text is literally replaced, we must be very careful when
+calling macros (or things we suspect to be macros) when using
+side-effects such as post-increment. If we'd said, for instance,
+
+<programlisting>
+         while (i &lt; len)
+             if (isspace(s[i++]))
+                 break;
+</programlisting>
+
+the compiler would see
+
+<programlisting>
+         while (i &lt; len)
+             if (((s[i++]) == ' '  || 
+                  (s[i++]) == '\t' || 
+                  (s[i++]) == '\n' || 
+                  (s[i++]) == '\r' || 
+                  (s[i++]) == '\f'))
+                 break;
+</programlisting>
+
+and <varname>i</varname> would be incremented rather a lot faster than
+we want. 
+</para>
+    </sidebar>
+    <para>
+As that line is very long, we may use backslash (<literal>\</literal>)
+characters to break it up over several lines; when the preprocessor
+sees a backslash at the end of a line, it is removed and the next line
+is concatenated. Hence, this is equivalent:
+
+<programlisting>
+#define isspace(c)  ((c) == ' '  || \
+                     (c) == '\t' || \
+                     (c) == '\n' || \ 
+                     (c) == '\r' || \
+                     (c) == '\f')
+</programlisting>
+</para>
+
+    <para>
+Perl makes extremely heavy use of macros internally.
+</para>
+  </sect1>
+
+  <sect1>
+    <title>Library Functions</title> 
+
+<para> 
+As we've already mentioned, C provides a standard library of useful
+functions - things like <function>printf</function> and
+<function>isspace</function>. However, the effects and side-effects of
+these library functions can vary between systems, so Perl reimplements
+or redefines the useful portion of the standard library internally.
+</para>
+
+    <para>
+The file <filename>pod/perlclib.pod</filename> in distributions after
+5.6.0 and 5.7.0 <!-- Yes, that's right, I patched Perl just so we
+could say this --> contains a table of equivalents between the sort of
+functions that you'd expect to see in an ordinary C program, and the
+functions that should be used in XS, embedding and the Perl
+internals, which you'll see in later chapters. 
+</para>
+
+  </sect1>
+
+  <sect1>
+    <title>Summary</title>
+    <para>
+We've seen an introduction to the C language from a Perl programmer's
+point of view. The most important things you should take from this
+chapter are:
+</para>
+
+    <itemizedlist>
+      <listitem>
+
+	<para>In C, everything is a function, even the
+	<userinput>main</userinput> body of your program, and all
+	functions should have prototypes before they are called.</para>
+
+      </listitem>
+      <listitem>
+
+	<para>
+C has four different types of variable: parameter, automatic, global
+and static. All variables <emphasis>must</emphasis> be declared before
+being used.
+</para>
+
+      </listitem>
+      <listitem>
+
+	<para>C is a <emphasis>strongly typed</emphasis> language; it
+	has a number of data types, and each variable can have one and
+	only one type.</para>
+
+      </listitem>
+      <listitem>
+
+	<para>
+C has no built-in functions whatsoever, but it does have a standard
+library of functions available; however, as we'll see in later
+chapters, when using Perl and C, you're likely to use Perl's
+reimplementations of the standard functions. 
+</para>
+
+      </listitem>
+      <listitem>
+
+	<para>
+C's syntax is very similar to Perl's, but is more `austere': no
+statement modifiers, no <userinput>foreach</userinput>, no
+<userinput>redo</userinput>, but it does have a
+<userinput>switch</userinput>. 
+</para>
+
+      </listitem>
+      <listitem>
+
+	<para>
+C programs are automatically run through a preprocessor which can be
+used to give meanings to tokens and create in-line functions.
+</para>
+
+      </listitem>
+    </itemizedlist>
+
+    <remark>Review comments suggested that we should add something on
+portability and linking. Especially since we assume dynamic linking
+almost immediately.</remark>
+
+  </sect1>
+
+
+
+</chapter>

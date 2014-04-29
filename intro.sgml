@@ -1,0 +1,98 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter id="intro">
+  <title>Introduction</title>
+
+  <para>TBD</para>
+
+  <sect1>
+    <title>Why interface to other languages?</title>
+
+    <para>The flexibility of the Perl language means that it is
+    possible to solve many programming problems without ever needing
+    to use any other language. There are many modules on CPAN that are
+    extremely useful and are written completely in Perl.</para>
+
+    <para> In fact, writing a module in Perl has a number of
+    advantages over using other languages:</para>
+
+    <itemizedlist>
+
+      <listitem>
+	<para> It is far easier to write portable cross-platform code
+	in perl than it is to use C. One of the successes of perl has
+	been its support of many varied operating systems. It is
+	unlikely that a module written in C could be as portable as a
+	perl version without expending much more effort.</para>
+      </listitem>
+
+      <listitem>
+	<para>Some problems do not need the speed gain or added
+	complexity that will come from using a compiled
+	language. There are many programmers that are proficient in
+	Perl (and/or Java) for whom writing a perl module would be
+	much more efficient (in terms of programming effort) than
+	writing the equivalent in C.</para>
+      </listitem>
+    </itemizedlist>
+
+    <para>People program in perl for a reason and this should not be
+    forgotten when it comes to deciding on reasons for not using perl.
+    These issues were addressed in the development of the standard
+    <classname>File::Temp</classname> module (part of Perl
+    5.6.1). This module provides a standard interface for creating
+    temporary files from Perl. The original intention was that this
+    module would be written in C but it quickly became apparent that a
+    perl implementation would be easier because of portability
+    problems (since it was to be a standard module it would have to
+    work on all platforms supported by Perl) and speed would not be a
+    real issue unless thousands of temporary files were
+    required.</para>
+
+    <para>Having addressed why not to use another language there are,
+    of course, two important reasons why another language is
+    required:</para>
+
+    <variablelist>
+      <varlistentry>
+	<term>Speed</term>
+	<listitem>
+	  <para>In some cases Perl is simply too slow for a particular
+	  program. In this case the choice is either to change the
+	  algorithm or to use a faster programming language. The Perl
+	  Data Language was created specifically to address the case
+	  of processing N-dimensional arrays but there are still times
+	  when another language is required.</para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+	<term>Functionality</term>
+	<listitem>
+	  <para>There are many useful libraries available that have
+	  been written in other languages (especially C, and for
+	  numerical applications, Fortran). If new functionality is
+	  required that is present in an external library then it is
+	  usually far better to provide a perl interface to the
+	  library than to recode the library in perl.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+  </sect1>
+
+  <sect1>
+    <title>Why embed Perl in other applications?</title>
+
+    <para>TBD</para>
+
+  </sect1>
+
+
+  <sect1>
+    <title>The Perl internals</title>
+
+    <para>TBD</para>
+
+  </sect1>
+
+</chapter>

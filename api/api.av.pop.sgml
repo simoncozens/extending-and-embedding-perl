@@ -1,0 +1,75 @@
+<sect3 id="api.av.pop">
+	<title><function>av_pop</function> and
+	<function>av_shift</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>SV* <function>av_pop</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+      </funcprototype>
+      <funcprototype>
+        <funcdef>SV* <function>av_shift</function></funcdef>
+        <paramdef>AV* <parameter>array</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+	<para>
+	  <function>av_pop</function> is just like the Perl function
+	  <function>pop</function>; it removes the highest element
+	  from an array and returns it. We've already seen an example
+	  of this at <xref linkend="api.get.av">.
+	</para>
+	<para>
+	  Similarly, <function>av_shift</function> does the same as
+	  the Perl function <function>shift</function>. In fact, the
+	  Perl <function>shift</function> function is implemented in
+	  terms of <function>av_shift</function>. 
+	</para>
+
+<example>
+<title> Implementing <function>shift</function> </title>
+<para>
+	    Here we're going to dive into Perl's "push pop", or PP,
+	    code; this is the part of Perl which implements the
+	    fundamental operations. The function we're going to look
+	    at is <function>pp_shift</function> in
+	    <filename>pp.c</filename>. PP code is extremely
+	    macro-laden, but don't worry, we'll be looking at every
+	    line in detail.
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av.shift.1">
+        <area coords="2" id="api.av.shift.2">
+        <area coords="3" id="api.av.shift.3">
+          </areaspec>
+          <programlisting>
+
+PP(pp_shift)
+{
+    dSP;
+    AV *av = (AV*)POPs;
+    SV *sv = av_shift(av);
+    EXTEND(SP, 1);
+    if (!sv)
+        RETPUSHUNDEF;
+    if (AvREAL(av))
+        (void)sv_2mortal(sv);
+    PUSHs(sv);
+    RETURN;
+}
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av_pop.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_pop.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

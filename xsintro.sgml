@@ -1,0 +1,2185 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter id="xsintro">
+  <title>Introduction to XS</title>
+
+  <remark>Assumes we have a book introduction that let's the reader
+  know the level of perl and C required</remark>
+
+  <remark>Reviewer suggestion even more material on module building in
+  general. We need to decide whether this is what we really
+  want.</remark>
+
+<para>
+This chapter will introduce the fundamentals of interfacing perl to
+the C programming language. Before we can describe how to do this
+we first have to explain how Perl modules work and how they are created.
+</para>
+
+<sect1 id="xsi.modintro">
+<title>Perl Modules</title>
+
+<para>
+This section describes the anatomy of a Perl module distribution.  If
+you are already familiar with how to create pure-perl modules then you
+can safely skip to the next section. In essence a perl module is
+simply a file containing perl code (usually in its own namespace using
+the <function>package</function> keyword) with a file extension of
+<filename>.pm</filename>. When you <function>use</function> a module,
+perl searches through a series of directories (specified by the
+<varname>@INC</varname> array) looking for a file with the correct
+name. Once found, the file is parsed and the routines made available
+to the main program.  This mechanism allows code to be shared and
+re-used and is the reason behind the success of the <firstterm><ulink
+url="http://www.cpan.org">Comprehensive Perl Archive
+Network</ulink></firstterm> (CPAN).
+</para>
+
+<para>
+To maximize the reusability of your modules you should write them in
+such a way that they do not interfere with other parts of Perl or
+other modules.  If this is not done, it would be possible for your
+module to clash with other modules or with the main program and this
+is undesirable. There are three main ways that this is achieved:
+</para>
+
+<itemizedlist>
+<listitem>
+<para>
+You should assign a namespace to each module. This namespace is usually the
+same as the module name but does not have to be. So long as another
+part of your program does not choose the identical namespace the module
+will only interact with the caller through its defined interface.
+</para>
+</listitem>
+
+<listitem>
+<para>
+Your modules should export functions by request rather than by
+default. If all the functions provided by a module are exported then
+it is possible that they will clash with other functions already in
+use. This is particularly important if new functions are added to a
+module after the main program has been written since you may add a
+routine that will overwrite a previous definition.  This is not
+relevant when object-oriented classes are defined since they never
+export functions explicitly.
+</para>
+</listitem>
+
+      <listitem>
+
+	<para>Lexical variables (i.e. those declared with
+	<function>my</function>) should be used in modules wherever
+	possible to limit access from outside the namespace and to
+	make it easier for the module to become
+	"thread-safe"<footnote> <para>We will not attempt to cover
+	thread safety here. All you need to know for this book is that
+	global variables and static memory hinder the use of threads
+	since you have to make sure that parallel threads do not
+	change the information in a variable whilst another thread is
+	using the value. If you only use Perl lexical variables and C
+	automatic variables you will be fine.</para>
+	</footnote>. Globals should only be used when absolutely
+	necessary and in many cases you can limit them to
+	<varname>$VERSION</varname> for version numbering,
+	<varname>$DEBUG</varname> for switching debugging state and
+	the <classname>Exporter</classname> globals. In other words,
+	globals that are not modified during program execution.</para>
+      </listitem>
+</itemizedlist>
+
+<para>
+Here is an example of a minimalist module that shows how these
+constraints can be implemented:
+</para>
+
+<programlistingco>
+      <areaspec>
+	<area coords="1" id="xsi.mod.package">
+	<area coords="3" id="xsi.mod.perlversion">
+	<area coords="4" id="xsi.mod.strict">
+	<area coords="6" id="xsi.mod.export">
+	<area coords="8" id="xsi.mod.vers">
+	<area coords="10" id="xsi.mod.explist">
+	<area coords="13" id="xsi.mod.code">
+	<area coords="15" id="xsi.mod.retval">
+      </areaspec>
+<programlisting>
+package Example;
+
+use 5.006;
+use strict;
+
+use base qw/Exporter/;
+
+our $VERSION = '1.00';
+
+our @EXPORT_OK = qw/ myfunc /;
+
+# Code
+sub myfunc { 1; }
+
+1;
+</programlisting>
+<calloutlist>
+<callout arearefs="xsi.mod.package">
+<para>
+This is the namespace declaration. All code in this file
+is only visible in this namespace unless explicitly referred
+to from outside or until a new <function>package</function> function
+is found.
+</para>
+</callout>
+<callout arearefs="xsi.mod.PerlVersion">
+<para>
+This line makes sure that the perl version used by this module is at
+least version 5.6.0 (5.006 in the old numbering style). This is
+because the module makes use of the <function>our</function> variable
+declaration that was introduced in this version of Perl
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.strict">
+<para>
+All Perl modules should have <classname>strict</classname>
+checking. Among other things, this pragma instructs Perl to tell you
+of any undeclared variables that it comes across; an excellent way to
+minimize obvious bugs in code.
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.export">
+<para>
+Here we inherit methods from the <classname>Exporter</classname> class
+in order to enable exporting of functions and variables to the
+namespace that <function>use</function>es this module.
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.vers">
+<para>
+This line defines the version number of the module. It is used by CPAN
+for indexing and to enable Perl to check that the correct version of a
+module is available.
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.explist">
+<para>
+The <varname>@EXPORT_OK</varname> array contains a list of all the
+functions that can be exported by this routine. They will not be
+exported unless explicitly requested. The <varname>@EXPORT</varname>
+array can be used to always export a function but that is not
+desirable in most cases.
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.code">
+<para>
+This is the code that implements the module functionality. The actual
+code for the module goes here.
+</para>
+</callout>
+
+<callout arearefs="xsi.mod.retval">
+<para>
+All modules that are read into Perl must finish with a true value (in
+this case <literal>1</literal>) so that Perl can determine that the
+module was read without error.
+</para>
+</callout>
+
+</calloutlist>
+</programlistingco>
+
+<para>
+If you name this file <filename>Example.pm</filename> we can load it with:
+</para>
+
+<programlisting>
+use Example qw/ myfunc /;
+</programlisting>
+
+<para>
+in order to import the named function into the current
+namespace. Alternatively if you load it as
+</para>
+
+<programlisting>
+use Example;
+</programlisting>
+
+<para>
+the function <function>myfunc</function> will not be imported but can
+still be accessed as <function>Example::myfunc()</function>. More
+information on perl modules can be found in the
+"<filename>perlmod</filename>" man page that comes with Perl.
+</para>
+
+<sect2 id="xsi.moddist">
+<title>Module distributions</title>
+
+<para>
+With a single perl-only module installation could consist simply of copying
+the file to a location that Perl searches in or by changing the
+<envar>PERL5LIB</envar> environment variable so that it contains the
+relevant directory. For anything more complex or if the module is to
+be distributed to other sites (for example via the CPAN) Perl provides
+a framework that can be used to automate installation. In order to use
+this framework we need to create a number of files in addition to the module:
+</para>
+
+<variablelist>
+<varlistentry>
+<term>
+<filename>README</filename>
+</term>
+<listitem>
+<para>
+ This simply provides a short description of the module, how to
+ install it and any additional information the author wanted to
+ add. The file is not required by Perl but is useful to have and it is
+ required for any module submitted to CPAN.
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>
+<filename>Makefile.PL</filename>
+</term>
+<listitem>
+
+	    <remark>More explicit description of make? Need to explain
+	    how it works with reference to timestamps and
+	    dependencies.</remark>
+
+<para>
+  Along with the module itself this is the most important file that
+  should be supplied to help build a module. It is a Perl program that
+  generates a make file when run <footnote><para>a makefile is a list
+  of rules used by the <command>make</command> program to determine
+  what action to take. <command>make</command> is a standard program
+  on most unix distributions. On <trademark>Windows</trademark> and
+  other operating systems that lack compilers as standard, it will be
+  necessary to install a version of
+  <command>make</command></para></footnote>. It is this makefile that
+  is used to build, test and install the module. A Perl module
+  installation usually consists of:
+</para>
+
+	    <screenco>
+	      <areaspec>
+		<!-- one of (AREASET AREA) -->
+		<area coords="1" id="xsi.s1.pmakepl">
+		<area coords="2" id="xsi.s1.pmake">
+		<area coords="3" id="xsi.s1.pmaket">
+		<area coords="4" id="xsi.s1.pmakei">
+	      </areaspec>
+<screen>
+<prompt>%</prompt><userinput> perl Makefile.PL</userinput>
+<prompt>%</prompt><userinput> make</userinput>
+<prompt>%</prompt><userinput> make test</userinput>
+<prompt>%</prompt><userinput> make install</userinput>
+
+</screen>
+<calloutlist>
+		<callout arearefs="xsi.s1.pmakepl">
+<para>Generate the make file</para>
+</callout>
+<callout arearefs="xsi.s1.pmake">
+<para>use the <filename>Makefile</filename> to build the module.</para>
+</callout>
+<callout arearefs="xsi.s1.pmaket">
+<para>Run any included tests.</para>
+</callout>
+<callout arearefs="xsi.s1.pmakei">
+<para>Install the module into the standard location.</para>
+</callout>
+
+</calloutlist>
+</screenco> 
+
+<para>
+  The <filename>Makefile.PL</filename> is useful since it deals with
+  all the platform specific options that are required to build
+  modules. This system guarantees that modules are built using the
+  same parameters that were used to build Perl itself. This platform
+  configuration information is stored by Perl in the
+  <classname>Config</classname> module.
+</para>
+
+<para>
+  At its simplest the <filename>Makefile.PL</filename> is a very short
+  program that runs one subroutine:
+</para>
+
+<programlisting>
+   use ExtUtils::MakeMaker;
+   # See lib/ExtUtils/MakeMaker.pm for details of how to influence
+   # the contents of the Makefile that is written.
+   WriteMakefile(
+       'NAME'		=> 'Example',
+       'VERSION_FROM'	=> 'Example.pm', # finds $VERSION
+       'PREREQ_PM'	=> {}, # e.g., Module::Name => 1.1
+   );
+</programlisting>
+
+<para>
+  All of the system dependent functionality is provided by the
+  <classname>ExtUtils::MakeMaker</classname> module. The
+  <function>WriteMakefile</function> routine accepts a hash that
+  controls the contents of the makefile. In the above example NAME
+  specifies the name of the module, VERSION_FROM indicates that the
+  version number for the module should be read from the VERSION
+  variable in the module itself and PREREQ_PM lists the dependencies
+  for this module (the <classname>CPAN</classname> module uses this to
+  determine which other modules should be installed). Additional
+  options will be described in later sections and a full description
+  can be found in the documentation for
+  <classname>ExtUtils::MakeMaker</classname>.
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>
+<filename>MANIFEST</filename>
+</term>
+<listitem>
+<para>
+ A list of all the files that are meant to be part of the
+ distribution. When the <filename>Makefile.PL</filename> program is
+ run it checks this file to make sure all the required files are
+ available. This file is not required but is recommended in order to
+ test the integrity of the distribution and for creating a
+ distribution file when using "<userinput>make dist</userinput>".
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>
+<filename>test.pl</filename>
+</term>
+<term><filename>t</filename> directory</term>
+<listitem>
+<para>
+ Although not a requirement, all module distributions should include a
+ test suite. Test files are very important for testing the integrity
+ of the module. They can be used to make sure that the module works
+ now, that it works after improvements are made and that it works on
+ platforms that may not be accessible by the module author. When Perl
+ sees a <filename>test.pl</filename> file in the current directory the
+ resultant <filename>Makefile</filename> includes a test target that
+ will run this file and check the results. A good test suite is one
+ that uses all the functionality of the module in strange ways. A bad
+ test suite is one that simply loads the module and exits (or, even
+ worse, no test suite at all). Perl provides two means of testing a
+ module. The <filename>test.pl</filename> file is the simplest but a
+ more extensible approach is to create a test directory (called simply
+ <filename>t</filename>) containing multiple tests. The convention is
+ that tests in the <filename>t</filename> directory have a file suffix
+ of <filename>.t</filename> and are named after the functionality they
+ are testing. (for example <filename>loading.t</filename>,
+ <filename>ftp.t</filename>). Test programs are written using the
+ framework provided by the <classname>Test</classname> module. A
+ simple example, based on <classname>Example</classname> could be:
+</para>
+
+<example id="xsi.ex.test">
+<title>Simple test program</title>
+<programlistingco>
+		<areaspec>
+		  <area coords="2" id="xsi.testmod">
+		  <area coords="4" id="xsi.begin">
+		  <area coords="6" id="xsi.loadmod">
+		  <area coords="7" id="xsi.testok">
+		  <area coords="10" id="xsi.testrun">
+		</areaspec>
+<programlisting>
+use strict;
+use Test;
+
+BEGIN { plan tests => 2 }
+
+use Example qw/ myfunc /;
+ok(1);
+
+my $result = myfunc(); 
+ok( 1, $result );
+
+</programlisting>
+<calloutlist>
+<callout arearefs="xsi.testmod">
+<para>
+Load the testing framework.
+</para>
+</callout>
+
+<callout arearefs="xsi.begin">
+<para>
+Inform the test framework to expect two test results.
+</para>
+</callout>
+
+<callout arearefs="xsi.loadmod">
+<para>
+Load the module that is being tested and import the required routines.
+</para>
+</callout>
+
+<callout arearefs="xsi.testok">
+<para>
+The <function>ok</function> takes the supplied argument and checks to
+see whether the argument is true or false. In this case the argument
+is always true and the <function>ok</function> always prints an
+<computeroutput>ok</computeroutput> message so long as the module has
+been loaded successfully. If the module fails to load this line will
+never be reached.
+</para>
+</callout>
+
+<callout arearefs="xsi.testrun">
+<para>
+In this line, the <function>ok</function> routine accepts two
+arguments: the expected result and the result from the current
+test. An <computeroutput>ok</computeroutput> message is printed if the
+two arguments are equal, <computeroutput>not ok</computeroutput> if
+they are different.
+</para>
+</callout>
+
+</calloutlist>
+</programlistingco>
+</example>
+
+</listitem>
+</varlistentry>
+</variablelist>
+
+      <remark>Is there enough structure to have a diagram that shows
+      the directory structure? There is only a t directory. so the
+      structure is essentially:</remark>
+
+      <programlisting>
+module dir -  Makefile.PL
+              Module.pm
+              MANIFEST
+              t        -  test1.t
+                          test2.t
+</programlisting>
+
+      <remark>so it is not very interesting but might be worth it</remark>
+      
+
+<para>
+Templates for these files can be created by using the
+<command>h2xs</command> program that comes as part of perl. When used
+with the <option>-X</option> option a basic set of files are created:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>h2xs -X Example</userinput>
+<computeroutput>
+Writing Example/Example.pm
+Writing Example/Makefile.PL
+Writing Example/README
+Writing Example/test.pl
+Writing Example/Changes
+Writing Example/MANIFEST
+</computeroutput>
+</screen>
+
+<para>
+In addition to the files described above <command>h2xs</command>
+generates a file called <filename>Changes</filename> that can be used
+to track changes that are made to the module during its lifetime. This
+information is useful for checking what has happened to the module and
+some editors (e.g. <application>emacs</application>) provide an easy
+means of adding to these files as the code evolves. 
+</para>
+
+</sect2>
+
+</sect1>
+
+
+<sect1 id="xsi.xs">
+    <title>Interfacing to another language - C from XS</title>
+
+    <para>Now that we have covered how to create a module and
+    determined that we need to interface to other languages, this
+    section will describe the basics of how to combine C code with
+    Perl. We start with C because that is the simplest (perl itself is
+    written in C). Additionally, this section will only describe how
+    to interface to C using facilities that are available in every
+    perl distribution. Interfacing to C using other techniques
+    (e.g. <application>SWIG</application> and the
+    <classname>Inline</classname> module) will be described in <xref
+    linkend="altxs">. If you are familiar with the basics, more
+    advanced XS topics are covered in <xref linkend="advxs">.</para>
+
+<para>
+Perl provides a system called XS (for eXternal Subroutines) <!--
+Advanced Perl Programming, p.290 --> that can be used to link it to
+other languages. XS is a glue language that is used to indicate to
+Perl the types of variables to be passed into the function and the
+variables that are to be returned. The XS file is translated to C code
+that can be understood by the rest of the perl internals by the XS
+compiler (called <command>xsubpp</command>). In addition to the XS
+file, the compiler requires a file that knows how to deal with
+specific variable types (for input and output). This file is called a
+<firstterm>typemap</firstterm> and, for example, contains information
+on how to turn a perl scalar variable into a C integer.
+</para>
+
+<para>
+This section will begin by describing the changes that have to be made
+to a standard Perl module in order to use XS and will then proceed
+with an example of how to provide simple C routines to Perl.
+</para>
+
+<sect2>
+<title>The perl module</title>
+
+<para>
+As a first example, we will construct a perl module that provides
+access to some of the examples from <xref linkend="cintro">.  The first
+thing we need to do is to generate the standard module infrastructure
+described in <xref linkend="xsi.modintro" > using <command>h2xs</command>
+but this time without the <option>-X</option> option to indicate that
+we are writing an XS extension. The module can be called
+<classname>Example</classname>:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>h2xs -A -n Example</userinput>
+<computeroutput>
+Writing Example/Example.pm
+Writing Example/Example.xs
+Writing Example/Makefile.PL
+Writing Example/README
+Writing Example/test.pl
+Writing Example/Changes
+Writing Example/MANIFEST
+</computeroutput>
+</screen>
+
+<para>
+The <option>-A</option> option is used to indicate to
+<command>h2xs</command> that constant autoloading is not required;
+more on that later (see <xref linkend="xsi.autoload">).  The
+<option>-n</option> is used to specify the name of the module in the
+absence of a C header file. Besides the creation of the
+<filename>Example.xs</filename> file the only change made to the files
+generated previously is to change the perl module (the
+<filename>.pm</filename> file) so that it will load the C code that is
+to be generated. The module created by <command>h2xs</command> has
+many features that are not important for this discussion so we will
+start from the minimalist module described in <xref
+linkend="xsi.modintro"> and modify it to support shared libraries:
+</para>
+
+<programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="xsi.expack">
+	  <area coords="6" id="xsi.dynload">
+	  <area coords="9" id="xsi.newexplist">
+	  <area coords="11" id="xsi.bootstrap">
+	</areaspec>
+<programlisting>
+package Example;
+
+use 5.006;
+use strict;
+
+use base qw/Exporter DynaLoader/;
+
+our $VERSION = '0.01';
+our @EXPORT_OK = qw/ print_hello /;
+
+bootstrap Example $VERSION;
+1;
+</programlisting>
+<calloutlist>
+
+<callout arearefs="xsi.expack">
+<para>
+Start a new package (namespace) named <classname>Example</classname>.
+</para>
+</callout>
+
+<callout arearefs="xsi.dynload">
+<para>
+This class now inherits from both <classname>Exporter</classname> and <classname>DynaLoader</classname>.
+</para>
+</callout>
+
+<callout arearefs="xsi.newexplist">
+<para>
+The <function>print_hello</function> function is only referenced in
+the export list; the shared library is responsible for supplying all
+the information required by perl to implement this function.
+</para>
+</callout>
+
+<callout arearefs="xsi.bootstrap">
+<para>
+Load the <classname>Example</classname> shared library associated with the provided version number.
+</para>
+</callout>
+
+</calloutlist>
+</programlistingco>
+
+<para>
+There are only two changes: The first is that the module now inherits
+from the <classname>DynaLoader</classname> module as well as the
+<classname>Exporter</classname> module. The
+<classname>DynaLoader</classname> provides the code necessary to load
+shared libraries into Perl. The shared libraries are created from the
+XS code on systems that support dynamic loading of shared libraries
+<footnote><para>on other systems it is still possible to use
+<classname>DynaLoader</classname> but the module must be statically
+linked into the perl binary by using <userinput>make perl</userinput>
+rather than just <userinput>make</userinput> for the second
+stage.</para></footnote>. The second change is the line added just
+before the end of the module. The bootstrap function is the one that
+does all the work of loading the dynamic library named
+<classname>Example</classname> making sure that the version matches
+<varname>$VERSION</varname>. The bootstrap function is technically a
+method that is inherited from the <classname>DynaLoader</classname>
+class and is the equivalent of <userinput>Example-&gt;bootstrap($VERSION);
+</userinput>
+</para>
+
+</sect2>
+
+<sect2>
+<title>The XS File</title>
+
+<para>
+Now that the preliminaries are taken care of the XS file itself must
+be examined and edited. The first part of any XS file is written as if
+you are writing a C program and the contents are copied to the output
+C file without modification. This section should always start by
+including the standard perl include files so that the perl internal
+functions are available:
+</para>
+
+<programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+</programlisting>
+
+<para>
+These always have to be here and are not automatically added by the
+xsub compiler (although <command>h2xs</command> includes them) when it
+generates the C file. Any other C functions or definitions may be
+included in the first section of the file.
+</para>
+
+<para>
+As a first example of interfacing Perl to C we will start by trying to
+extend Perl to include functions described in <xref
+linkend="cintro">.  These must either be added to the
+<filename>.xs</filename> file directly or included from either a specially
+built library or a separate file in the distribution. For simplicity
+we will start by adding the code from <xref linkend="cintro.hw"> and <xref
+linkend="cintro.treble"> directly to the <filename>.xs</filename> file:
+</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="3" id="xsi.void">
+	</areaspec>
+<programlisting>
+#include &lt;stdio.h&gt;
+
+<remark>add <type>void</type> argument to <function>print_hello</function>? if we want to be ANSI pedantic.</remark>
+
+void print_hello () 
+{
+   printf("hello, world\n");
+}
+
+int treble(int x)
+{
+   x *= 3;
+   return x;
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="xsi.void">
+	    <para>Here we have replaced the <function>main</function>
+	    declaration of <xref linkend="cintro.hw"> with a new
+	    function name that can be called from elsewhere. This code
+	    can not be run on its own - it needs to be called.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+
+<para>
+The XS part of the file is indicated by using the
+<varname>MODULE</varname> keyword.  This declares the module namespace
+and defines the name of the shared library that is created. Anything
+after this line must be in the <emphasis>XS Language</emphasis>. The
+name of the perl namespace to be used for functions is also defined on
+this line. This allows multiple namespaces to be defined within a
+single module.
+</para>
+
+<programlisting>
+MODULE = Example  PACKAGE = Example
+</programlisting>
+
+<para>
+Once the module and package name have been declared the XS functions
+themselves can be added. 
+</para>
+
+</sect2>
+
+<sect2 id="xsi.helloworld">
+<title>Example: &quot;Hello, world&quot;</title>
+
+<para>
+As a first example we will simply call the
+<function>print_hello</function> declared at the start of the
+file. This has the advantage of being the simplest type of function to
+call from XS since it takes no arguments and has no return values. The
+XS code to call this is therefore very simple:
+</para>
+<programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="xsi.xs1.retval">
+	  <area coords="2" id="xsi.xs1.func">
+	</areaspec>
+<programlisting>
+void
+print_hello()
+
+</programlisting>
+<calloutlist>
+<callout arearefs="xsi.xs1.retval">
+<para>Type of value returned to perl from this function. In this case
+nothing is returned so the value is <type>void</type></para>
+</callout>
+<callout arearefs="xsi.xs1.func">
+<para>Name of the function as seen from perl and the arguments to be
+passed in.
+</para>
+</callout>
+</calloutlist>
+</programlistingco>
+
+<para>
+An XS function consists of a definition of the type of variable to be
+returned to Perl, the name of the function with its arguments and then
+a series of optional blocks that further define the function. 
+
+<important><para>
+Unlike a C prototype XS must have the return type (in this case <type>void</type>) by itself on the first line of the declaration with the function
+name and arguments on the next. 
+</para></important>
+
+This
+function is very simple so XS needs no extra information to work out
+how to interface perl to the <function>print_hello</function>
+function.
+</para>
+
+<para>
+Your XS file should now contain the following:
+</para>
+
+      <programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include &lt;stdio.h&gt;
+
+void print_hello ()
+{
+   printf("hello, world\n");
+}
+
+int treble(int x)
+{
+   x *= 3;
+   return x;
+}
+
+MODULE = Example  PACKAGE = Example
+
+void
+print_hello()
+</programlisting>
+
+<para>
+If this file is saved as <filename>Example.xs</filename> the module
+can be built in the <emphasis>normal</emphasis> way (don't forget to
+add this file to the <filename>MANIFEST</filename> if it is not there
+already):
+</para>
+
+<example id="xsi.build1"><title>Output from build of first XS example</title>
+<screenco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="2" id="xsi.mk.manifest">
+	    <area coords="6" id="xsi.mk.mkdir">
+	    <area coords="13" id="xsi.mk.cppm">
+	    <area coords="16" id="xsi.mk.xsubpp">
+	    <area coords="18" id="xsi.mk.proto">
+	    <area coords="19" id="xsi.mk.gcc">
+	    <area coords="23" id="xsi.mk.ld">
+	  </areaspec>
+<screen>
+<prompt>%</prompt> <userinput>perl Makefile.PL</userinput>
+Checking if your kit is complete...
+Looks good
+Writing Makefile for Example
+<prompt>%</prompt> <userinput>make</userinput>
+mkdir blib
+mkdir blib/lib
+mkdir blib/arch
+mkdir blib/arch/auto
+mkdir blib/arch/auto/Example
+mkdir blib/lib/auto
+mkdir blib/lib/auto/Example
+cp Example.pm blib/lib/Example.pm
+/usr/bin/perl -I/usr/lib/perl5/5.6.0/i386-linux -I/usr/lib/perl5/5.6.0
+  /usr/lib/perl5/5.6.0/ExtUtils/xsubpp  
+  -typemap /usr/lib/perl5/5.6.0/ExtUtils/typemap Example.xs > Example.xsc 
+  && mv Example.xsc Example.c
+Please specify prototyping behavior for Example.xs (see perlxs manual)
+gcc -c  -fno-strict-aliasing -O2 -march=i386 -mcpu=i686 -DVERSION=\"0.01\"
+  -DXS_VERSION=\"0.01\" -fPIC -I/usr/lib/perl5/5.6.0/i386-linux/CORE  Example.c
+Running Mkbootstrap for Example ()
+chmod 644 Example.bs
+LD_RUN_PATH="" gcc -o blib/arch/auto/Example/Example.so  
+  -shared -L/usr/local/lib Example.o     
+chmod 755 blib/arch/auto/Example/Example.so
+cp Example.bs blib/arch/auto/Example/Example.bs
+chmod 644 blib/arch/auto/Example/Example.bs
+</screen>
+
+	  <calloutlist>
+	    <callout arearefs="xsi.mk.manifest">
+	      <para>This checks that all the relevant parts of the
+	      distribution are present by comparing the contents of
+	      the directory with the contents listed in the
+	      <filename>MANIFEST</filename> file.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.mkdir">
+	      <para>The first step is to create the directory
+	      structure that will receive the module files as the
+	      build proceeds. This directory is called
+	      <filename>blib</filename> for &quot;Build
+	      Library&quot;.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.cppm">
+	      <para>This copies all the perl files to the architecture
+	      independent directory.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.xsubpp">
+	      <para>This line runs the XS compiler and translates the
+	      XS file to C code. The compiled file is written to a
+	      temporary file and then moved to
+	      <filename>Example.c</filename> rather than writing
+	      straight to the C file. This is done to prevent
+	      partially translated files being mistaken for valid C
+	      code.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.proto">
+	      <para>This warning can be ignored. It is informing you
+	      that some XS functions were defined without specifying a
+	      perl prototype. This warning can be removed either by
+	      using <userinput>PROTOTYPES: DISABLE</userinput> in the
+	      XS file after the <varname>MODULE</varname> declaration
+	      or by specifying a prototype for each XS function by
+	      including a <varname>PROTOTYPE:</varname> in each
+	      definition.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.gcc">
+	      <para>The C file generated by <command>xsubpp</command>
+	      is then compiled. The compiler and compiler options are
+	      the same as those used to compile perl itself. The
+	      values can be retrieved from the
+	      <classname>Config</classname> module. Additional
+	      arguments can be specified in the
+	      <filename>Makefile.PL</filename>.</para>
+	    </callout>
+	    <callout arearefs="xsi.mk.ld">
+	      <para>The final step in library creation is to combine
+	      all the object files (there can be more than one if
+	      additional code is required) and generate the shared
+	      library. Again the method for this is platform dependent
+	      and the methods are retrieved from the
+	      <classname>Config</classname> module.</para>
+	    </callout>
+	  </calloutlist>
+	</screenco>
+      </example>
+
+<para>
+<remark>
+We also may want to grab the output of the same thing on 
+Windows NT to show how similar it is and where the differences lie.
+Not because NT is the only other option, but to indicate that Perl
+will take care of the differences for you.
+</remark>
+</para>
+
+      <figure id="xsintro.xstoso">
+	<title>Transforming an XS file to a shared library.</title>
+	<mediaobject>
+	  <imageobject>
+	    <imagedata fileref="xstoso.eps" format="eps">
+	  </imageobject>
+	  <imageobject>
+	    <imagedata fileref="xstoso.png" format="png">
+	  </imageobject>
+	  <caption>
+	    <para>Flow diagram demonstrating the steps involved in
+	    transforming a <filename>.xs</filename> file to a shared
+	    library. The bracketed commands and the suffices for
+	    object code and shared libraries will vary depending on
+	    the operating system used. </para>
+	  </caption>
+	</mediaobject>
+      </figure>
+
+      <para>When the <command>Makefile.PL</command> is run it now
+      finds a <filename>.xs</filename> file in the directory and
+      modifies the resulting makefile to process that in addition to
+      the perl module. The build procedure therefore adjusts itself to
+      the presence of the <filename>.xs</filename> file. The
+      additional steps in the procedure are illustrated in <xref
+      linkend="xsintro.xstoso">. We don't yet have a test program but
+      we can test the newly built module from the command line to see
+      what happens:</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MExample -e 'Example::print_hello'</userinput>
+<computeroutput>
+Using /examples/Example/blib
+hello, world
+</computeroutput>
+</screen>
+
+<para>
+As expected, we now see the <computeroutput>hello,
+world</computeroutput> message. The command-line options are standard
+Perl but may require further explanation if you are not familiar with
+using Perl in this way.  This example uses the <option>-M</option>
+option to ask perl to load the external modules
+<classname>blib</classname> and <classname>Example</classname> and
+then execute the string <function>Example::print_hello</function>. The
+full package name is required for the subroutine name since Perl will
+not import it into the <classname>main</classname> namespace by
+default. The <classname>blib</classname> module simply configures perl
+to use a build tree to search for new modules. This is required
+because the <classname>Example</classname> module has not yet been
+installed. Running tests like this is not very efficient or scalable
+so the next step in the creation of this module is to write a test
+program. The testing framework provided by the
+<classname>Test</classname> module <footnote><para>Prior to versions
+5.6.1 of Perl the test program created by <command>h2xs</command> does
+not use the <classname>Test</classname> module and is therefore more
+complicated than is necessary</para></footnote> makes this easy. Here
+the test program from <xref linkend="xsi.ex.test"> has been modified to
+test our <classname>Example</classname> module:
+</para>
+
+<programlisting>
+use strict;
+use Test;
+BEGIN { plan tests => 2 }
+use Example;
+
+ok(1);
+print_hello;
+ok(1);
+</programlisting>
+
+<para>
+If the above program is saved to a file named
+<filename>test.pl</filename> we can then use the make program to run
+the test<footnote><para>It may be necessary to rerun the makefile
+creation phase if the test program is created after the makefile has
+been created. This is because Perl adjusts the contents of the
+makefile depending upon what is present in the module
+distribution.</para></footnote>
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>make test</userinput>
+<computeroutput>
+PERL_DL_NONLAZY=1 /usr/bin/perl -Iblib/arch -Iblib/lib -I/usr/lib/perl5/5.6.0/i386-linux -I/usr/lib/perl5/5.6.0 test.pl
+1..1
+ok 1
+hello, world
+ok 2
+</computeroutput>
+</screen>
+
+<para>
+The problem with the simple test above is that it is not really
+testing the <function>print_hello</function> subroutine but simply
+whether (a) the module has loaded (b) the
+<function>print_hello</function> subroutine runs without
+crashing. Whilst these are useful tests to do they do not tell us
+anything about the subroutine itself. This is because the testing
+system can only test variables and the
+<function>print_hello</function> routine does not return anything to
+the caller to indicate that everything is okay. The next section
+will fix this by adding return values.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Return Values</title>
+
+<para>
+Adding a simple return value to an XS routine (i.e. a single scalar, not
+a list) involves telling Perl the type of return value to expect. Our
+<function>print_hello</function> C function does not have a return
+value (it returns void) so it must be modified. We can do this by
+adding this function to the top of our XS file:
+</para>
+
+<example id="xsi.ex.retval">
+<title>&quot;Hello, world&quot; with a return value.</title>
+<programlisting>
+int print_hello_retval ()
+{
+   int retval;
+   retval = printf("hello, world\n");
+   return retval;
+}
+</programlisting>
+</example>
+
+<para>
+Here we have added a new function with a slightly different name to
+indicate that we are now returning an <type>int</type>eger value. This
+makes use of the fact that the <function>printf</function> returns
+the number of characters that have been printed.
+</para>
+
+<para>
+We can now add a new function to our XS code to take the return value
+into account:
+</para>
+
+<programlisting>
+int
+print_hello_retval()
+</programlisting>
+
+<para>
+Here the function is absolutely identical to the XS code for
+<function>print_hello</function> except that the <type>void</type>
+declaration has now been changed to an <type>int</type>. Once this is
+saved it can be rebuilt simply by typing <userinput>make</userinput>
+as before. If we now modify the test script to add
+</para>
+<programlisting>
+my $retval = print_hello_retval();
+ok( 13, $retval );
+</programlisting>
+<para>
+and change the planned number of test to three we can now test that
+the routine is returning the correct value (in this case the number of
+printed characters should be <literal>13</literal>):
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>make test</userinput>
+<computeroutput>
+PERL_DL_NONLAZY=1 /usr/bin/perl -Iblib/arch -Iblib/lib -I/usr/lib/perl5/5.6.0/i386-linux -I/usr/lib/perl5/5.6.0 test.pl
+1..3
+ok 1
+hello, world
+ok 2
+hello, world
+ok 3
+</computeroutput>
+</screen>
+<para>
+If the return value did not agree with the value we were expecting 
+the test script would have told us there was a problem:
+</para>
+<screen>
+<prompt>%</prompt> <userinput>make test</userinput>
+<computeroutput>
+PERL_DL_NONLAZY=1 /usr/bin/perl -Iblib/arch -Iblib/lib -I/usr/lib/perl5/5.6.0/i386-linux -I/usr/lib/perl5/5.6.0 test.pl
+1..3
+ok 1
+hello, world
+ok 2
+hello, world
+not ok 3
+# Test 3 got: '13' (test.pl at line 11)
+#   Expected: '12'
+</computeroutput>
+</screen>
+
+</sect2>
+
+<sect2>
+<title>Arguments and return values</title>
+
+<para>
+Our <function>treble</function> function from <xref linkend="cintro"> 
+takes an integer argument and returns an integer. This would be
+represented in XS as follows:
+</para>
+
+<example id="xsi.ex3">
+<title>XS for the treble function</title>
+<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="xsi.ex3.retval">
+	    <area coords="2" id="xsi.ex3.proto">
+	    <area coords="3" id="xsi.ex3.arg">
+	  </areaspec>
+<programlisting>
+int
+treble( x )
+  int x
+
+</programlisting>
+<calloutlist>
+<callout arearefs="xsi.ex3.retval">
+<para>Returns an integer</para>
+</callout>
+<callout arearefs="xsi.ex3.proto">
+<para>This is the signature of the command as it will be visible to
+Perl. There is now an input argument.</para>
+</callout>
+<callout arearefs="xsi.ex3.arg">
+<para>All the arguments listed in the previous line are then typed in
+this and successive lines. For simple C types Perl knows the
+translation without having to be told.</para>
+</callout>
+</calloutlist>
+</programlistingco>
+</example>
+
+<para>
+The example from <xref linkend="cintro"> could now be written as:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>cat treble.pl</userinput>
+<computeroutput>
+use Example;
+print "Three times ten is ", Example::treble(10), "\n";
+</computeroutput>
+<prompt>%</prompt> <userinput>perl -Mblib treble.pl</userinput>
+<computeroutput>
+Three times ten is 30
+</computeroutput>
+</screen>
+
+</sect2>
+
+</sect1>
+
+<sect1 id="xsi.further">
+<title>Taking things further</title>
+
+<para>
+So far we have shown how to use XS to provide wrappers to simple C
+functions with simple arguments where we want the signature of the
+Perl subroutine to match the signature of the C function. In many
+cases this is too simplistic an approach and extra code must be
+supplied in the XS layer. The XS wrapper allows C code to be provided
+as part of the subroutine definition using the
+<function>CODE</function> keyword. XS keywords occur after the initial
+XSUB declaration and are followed by a colon.  Here are <xref
+linkend="xsi.ex.retval"> and <xref linkend="xsi.ex3"> coded entirely in
+XS without going through an extra function:
+</para>
+
+<programlisting>
+int
+print_hello_retval ()
+ CODE:
+    RETVAL = printf("hello, world\n");
+ OUTPUT:
+    RETVAL
+
+int
+treble( x )
+  int x
+ CODE:
+   RETVAL = 3*x;
+ OUTPUT:
+   RETVAL
+</programlisting>
+<para>
+Here the <function>CODE</function> keyword indicates that the
+following lines will contain C code. The <varname>RETVAL</varname>
+variable is created automatically by the XSUB compiler and is used to
+store the return value for the function; it is guaranteed to be the
+same type as the declared return type of the XSUB (integer in both
+these examples).  One complication is that the return value is not
+automatically configured as a return value. <command>xsubpp</command>
+needs to be told explicitly that <varname>RETVAL</varname> should be
+returned and this is done by using the <function>OUTPUT</function>
+keyword.
+</para>
+
+
+<sect2>
+<title>Modifying input variables</title>
+
+<para>
+In some cases the input arguments are modified rather than or as well
+as providing a return value. In that case XS needs to be told which
+arguments are solely for input and which are output. The
+<function>OUTPUT</function> keyword is used for this. Here we modify
+the <function>treble</function> function so that the argument is
+modified instead of providing the result as a return value:
+</para>
+
+<programlisting>
+void
+treble_inplace( x )
+  int x
+ CODE:
+  x *=3;
+ OUTPUT:
+  x 
+</programlisting>
+<para>
+which is equivalent to this Perl subroutine:
+</para>
+<programlisting>
+sub treble_inplace {
+  $_[0] *= 3;
+  return;
+}
+</programlisting>
+<para>
+or more pedantically:
+</para>
+<programlisting>
+sub treble_inplace {
+  my $x = int($_[0]);
+  $x *= 3;
+  $_[0] = int($x);
+  return;
+}
+</programlisting>
+<para>
+and suffers from the same problem - the input argument must be a
+variable and not a constant else it can not be modified. If a constant
+is passed in (for example a straight number as in our previous
+example) Perl will generate a <errorname>Modification of a read-only
+value attempted</errorname> runtime error. The
+<function>OUTPUT</function> keyword forces the value of the variable
+at the end of the XSUB to be copied back into the perl variable that
+was passed in.
+</para>
+</sect2>
+
+<sect2>
+<title>Output arguments</title>
+
+      <para>In many C functions, some arguments are only returned
+      (that is the value of the argument on entry is irrelevant and is
+      set by the function itself). In these cases the XSUB must not
+      only specify which arguments in the list are to be returned but
+      which are to be ignored on input.</para>
+
+      <sidebar> <para>To be pedantic, all arguments in C are
+      passed in by value but some arguments are thought of as return
+      values because they are passed in a pointer to some memory and
+      that memory is modified by the function. The pointer itself is
+      not affected. Here we will be using a non-pointer XS example as
+      XS can be used to copy the results into the correct
+      variable. More detailed examples explicitly involving pointers
+      can be found in <xref linkend="advxs"> </para></sidebar>
+
+      <para>For example, if we wanted our <function>treble</function> function
+      to return the result into a second argument:</para>
+
+      <programlisting>
+&amp;treble(5, $out);
+</programlisting>
+
+      <para>we would have to write XS code like this:</para>
+
+      <programlisting>
+void
+treble(in, out)
+  int in
+  int out = NO_INIT
+ CODE:
+  out = 3 * in;
+ OUTPUT:
+  out
+</programlisting>
+
+      <para>Here, the NO_INIT flag tells the XS compiler that we don't
+      care what the value of the second argument is when the function
+      is called, only that the result is stored in it when we
+      leave. This is functionally equivalent to the following perl
+      code:</para>
+
+      <programlisting>
+sub treble {
+  $_[1] = 3 * $_[0];
+  return;
+}
+</programlisting>
+
+<para>
+Of course, this approach preserves a C-style calling signature and
+forces that onto Perl. In some cases this is desirable, maybe for
+familiarity with existing library interfaces, but in other cases not
+so. This brings us to the question of interface design and that topic
+is addressed in <xref linkend="xsi.design">
+</para>
+
+</sect2>
+
+
+<sect2 id="xsi.autoload">
+<title>Compiler Constants</title>
+
+<para>
+Providing access to functions is only part of the problem when
+interfacing to external libraries. Many libraries define constants
+(usually in the form of preprocessor <function>define</function>s)
+that are useful to Perl programmers as well as C
+programmers. <command>h2xs</command> automatically provides the code
+necessary to import preprocessor constants unless it is invoked with
+the <option>-c</option> or <option>-A</option> options. The approach
+taken by <command>h2xs</command> is to use the
+<classname>AutoLoader</classname> module to determine the value of
+constants on demand at runtime rather than importing every constant
+when the program starts.
+</para>
+
+<sidebar>
+<para>An extreme example is the standard
+<classname>POSIX</classname> module. This defines over 350 compiler
+constants and creating this many subroutines during loading would
+impose a large overhead.
+</para>
+</sidebar>
+
+<para>
+The autoloading is implemented in two parts. Firstly an
+<function>AUTOLOAD</function> is added to the <filename>.pm</filename>
+file. For versions of Perl before 5.8.0 the code will look something like this:
+</para>
+
+<programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="2" id="xsi.al.useerr">
+	  <area coords="3" id="xsi.al.useal">
+	  <area coords="4" id="xsi.al.usecarp">
+	  <area coords="6" id="xsi.al.start">
+	  <area coords="7" id="xsi.al.sub">
+	  <area coords="8" id="xsi.al.const">
+	  <area coords="9" id="xsi.al.val">
+	  <area coords="10" id="xsi.al.errno">
+	  <areaset coords="" id="xsi.al.none">
+	    <area coords="11" id="xsi.al.none.al1">
+	    <area coords="12" id="xsi.al.none.al2">
+	    <area coords="13" id="xsi.al.none.al3">
+	  </areaset>
+	  <area coords="15" id="xsi.al.croak">
+	  <areaset coords="" id="xsi.al.eval">
+	    <area coords="19" id="xsi.al.strict">
+	    <area coords="20" id="xsi.al.glob">
+          </areaset>
+	  <area coords="22" id="xsi.al.goto">
+	</areaspec>
+<programlisting>
+use strict;
+use Errno;
+use AutoLoader;
+use Carp;
+
+sub AUTOLOAD {
+    my $sub = $AUTOLOAD;
+    (my $constname = $sub) =~ s/.*:://;
+    my $val = constant($constname);
+    if ($! != 0) {
+        if ($! =~ /Invalid/ || $!{EINVAL}) {
+            $AutoLoader::AUTOLOAD = $sub;
+            goto &amp;AutoLoader::AUTOLOAD;
+        } else {
+            croak "Your vendor has not defined constant $constname";
+        }
+    }
+    {
+        no strict 'refs';
+        *$sub = sub () { $val };
+    }
+    goto &amp;$sub;
+}
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="xsi.al.useerr">
+	    <para>We use this module so that we can check for explicit values of the <varname>errno</varname> variable.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.useal">
+	    <para>Load the <classname>AutoLoader</classname>
+	    module. This is only required if you want to dynamically
+	    load additional functions from disk.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.usecarp">
+	    <para>Load the <classname>Carp</classname> module. This
+imports the <function>croak</function> function.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.start">
+	    <para>The subroutine must be called
+	    <function>AUTOLOAD</function> so that Perl will call it
+	    automatically when it can not find a definition for the
+	    subroutine in this package.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.sub">
+<para>The <varname>$AUTOLOAD</varname> package variable contains the
+name of the subroutine that is being requested. Here we copy that
+value to a lexical for convenience.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.const">
+	    <para>This strips the package name (and associated colons)
+	    from the requested function name, leaving just the name of
+	    the function in the current namespace.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.val">
+<para>This runs the <function>constant</function> function that
+returns the value of the required constant. This routine is an XS
+function that is created by the <command>h2xs</command> command; more
+on that later. The code generated by <command>h2xs</command> passes a
+second argument to this routine (<varname>$_[0]</varname>) but for
+simple constants it can usually be removed from the routine.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.errno">
+<para>
+This checks the error status from the <function>constant</function>. In
+C a common way of setting status is for the function to set a global
+variable <varname>errno</varname> and for the caller of the function
+to check <varname>errno</varname> when control is returned to it. In
+Perl this behaviour is implemented by the <varname>$!</varname>
+variable. <varname>$!</varname> is tied to the C
+<varname>errno</varname> variable so that Perl can check the value
+after system calls. Here the <function>constant</function> sets
+<varname>errno</varname> if the requested constant can not be
+located.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.none">
+<para>These lines check to see if <varname>errno</varname> has returned with
+	    errors that indicate that the constant does not exist at
+all. In that case it passes control to
+<classname>AutoLoader</classname> in case some functions are to be
+autoloaded from <filename>.al</filename> files. These checks are only
+required if auto-loaded routines are expected, else this is simply an
+extra overhead for the program.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.croak">
+<para>
+If the constant should be available but was not defined this line
+	    stops the program. <function>croak</function> is used
+rather than <function>die</function> so that the line number in the
+callers code is printed in the error message rather than the line
+number in the <function>AUTOLOAD</function> subroutine.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.eval">
+<para>At this point in the routine the value of the constant has been
+determined and, in principle, that value could be retuned to the
+caller. Whilst it is valid to do that in practice the constant will
+probably be called more than once. If the value is returned
+immediately, then the <function>AUTOLOAD</function> subroutine will be
+called every single time the constant is requested; very
+inefficient. To overcome this inefficiency the
+<function>AUTUOLOAD</function> subroutine creates a new subroutine in
+this package that simply returns the constant value. In the example
+this is done by creating an anonymous subroutine and storing it in a
+glob (see <xref linkend="perlvar.gv"> for more explicit details of how this
+can work). The name of the glob is stored in <varname>$sub</varname>
+and therefore requires that soft references are allowed. The
+<userinput>no strict 'refs'</userinput> turns off strict checking to
+allow this. If you are uncomfortable with glob assignments the same
+effect can be achieved simply by using a string
+<function>eval</function>: <userinput>eval "sub $sub () { $val }";</userinput>.</para>
+	  </callout>
+	  <callout arearefs="xsi.al.goto">
+<para>Finally, Perl is instructed to jump to the newly created
+subroutine and resume execution there. Using <function>goto</function>
+allows the program to run as if <function>AUTOLOAD</function> was
+never called.</para>
+	  </callout>
+	</calloutlist>
+</programlistingco>
+
+<para>
+The second part of the solution generated by <command>h2xs</command>
+lies in the <function>constant</function> function in the
+<filename>.xs</filename> file. Here is a simple yet functional form of the
+code generated by <command>h2xs</command> for some of the file
+constants that are available from the <classname>Fcntl</classname> module:
+</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="xsi.co.ret">
+<!-- 	  <area coords="2" id="xsi.co.func"> -->
+	  <area coords="4" id="xsi.co.errno">
+	  <area coords="5" id="xsi.co.sw">
+	  <area coords="6" id="xsi.co.case">
+	  <area coords="7" id="xsi.co.streq">
+	  <areaset coords="" id=xsi.co.ifdef
+	    <area coords="8" id="xsi.co.if">
+	    <area coords="9" id="xsi.co.retdef">
+	    <area coords="11" id="xsi.co.goto">
+          </areaset>
+ 	  <area coords="26" id="xsi.co.brk">
+	  <area coords="28" id="xsi.co.errno1">
+	  <area coords="31" id="xsi.co.notthere">
+	  <area coords="36" id="xsi.co.mod">
+	  <area coords="38" id="xsi.co.xsiv">
+	</areaspec>
+	<programlisting>
+static IV
+constant(char *name)
+{
+  errno = 0;
+  switch (*name) {
+  case 'S':
+     if (strEQ(name, "S_ISGID"))
+#ifdef S_ISGID
+         return S_ISGID;
+#else
+	  goto not_there;
+#endif
+  case 'O':
+     if (strEQ(name, "O_RDONLY"))
+#ifdef O_RDONLY
+	 return O_RDONLY;
+#else
+	 goto not_there;
+#endif
+     if (strEQ(name, "O_RDWR"))
+#ifdef O_RDWR
+	 return O_RDWR;
+#else
+	 goto not_there;
+#endif
+    break;
+    }
+    errno = EINVAL;
+    return 0;
+
+not_there:
+    errno = ENOENT;
+    return 0;
+}
+
+MODULE = Fcntl_demo PACKAGE = Fcntl_demo
+
+IV
+constant(name)
+   char * name
+
+        </programlisting>
+	<calloutlist>
+	  <callout arearefs="xsi.co.ret">
+<para>The return type of the function. In this case the return type is
+forced to be the perl integer type (see <xref
+linkend="cintro.typedef">)</para>
+	  </callout>
+	  <callout arearefs="xsi.co.errno">
+	    <para>Sets <varname>errno</varname> to zero (no error) so that its
+value can be checked on exit from the function.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.sw">
+<para>This denotes the start of a block that will switch on the first
+character of the requested constant name.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.case">
+<para>This block is executed if the constant name starts with a
+&quot;S&quot;.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.streq">
+<para>Compare the requested name with the string
+&quot;<literal>S_ISGID</literal>&quot;</para>
+	  </callout>
+	  <callout arearefs="xsi.co.ifdef">
+<para>This is the block that does all the work. The C-preprocessor is
+used to determine the code that is passed to the compiler. If the
+symbol is defined its value is returned, if it is not defined the code
+branches to the <function>not_there</function> label.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.brk">
+<para>If the constant can not be found even though it started with the
+correct letter the switch is exited since there is no chance of it
+matching the remaining tests.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.errno1">
+<para>If the constant name did not match anything in the switch block
+<varname>errno</varname> is set to <literal>EINVAL</literal>
+(&quot;Invalid argument&quot;) and the function returns
+<literal>0</literal>.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.notthere">
+<para>If the requested name was valid and present in the switch but
+was not available (maybe because the constant was not defined on this
+operating system) the function sets <varname>errno</varname> to
+<literal>ENOENT</literal> (literally &quot;No such file or
+directory&quot;) and returns.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.mod">
+<para>This defines the start of the XS part of the file.</para>
+	  </callout>
+	  <callout arearefs="xsi.co.xsiv">
+<para>The XSUB definition for <function>constant</function> is very
+simple with a single string argument and a return type of
+<type>IV</type>.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+<para>
+It is important to realise that this example only deals with numeric
+constants (in the above example the constants are assumed to be just
+integers). String constants must be handled differently - especially if
+a mixture of numeric and string constants are required.
+</para>
+
+<sect3>
+<title>ExtUtils::Constant</title>
+
+<para>From perl 5.8.0 a new module has been added,
+<classname>ExtUtils::Constant</classname>, that simplifies the
+handling of constants. With this module the XS and C code required to
+deal with the compiler constants is generated automatically when
+<filename>Makefile.PL</filename> is executed. This has a number of
+advantages over the current scheme:</para>
+
+	<itemizedlist>
+	  <listitem>
+	    <para>Improvements in the constant handling code can be
+	    made without having to touch every single module that
+	    uses constants.</para>
+	  </listitem>
+	  <listitem>
+	    <para>The XS files are now much simpler. No longer are the
+	    files dominated by long repetitive lists of constants and
+	    C pre-processor directives.</para>
+	  </listitem>
+	  <listitem>
+	    <para>The new system allows compiler constants to have
+	    different types. An integer constant is treated
+	    differently to a floating point constant.</para>
+	  </listitem>
+	</itemizedlist>
+
+</sect3>
+
+
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>What about that <filename>Makefile.PL</filename>?</title>
+
+<para>
+So far we have not really addressed the contents of the file that is
+instrumental in configuring the build process. When building simple
+perl modules the <filename>Makefile.PL</filename> is almost empty
+providing just the name of the module and a means for determining the
+location to install the module (see <xref linkend="xsi.moddist">).  The
+<filename>Makefile.PL</filename> program is much more important when
+building XS extensions since the makefile that is generated must
+include information on how to translate the XS code to C, how to run
+the C compiler and how to generate shared libraries. In all the
+examples presented so far this has been handled automatically by the
+<function>WriteMakefile</function> function since it
+detects the presence of an XS file and sets up the appropriate
+makefile targets. However, this only works if the module can be built
+without additional configurations above and beyond that used to build
+perl originally. So far the examples have not required
+anything more than standard include files and libraries. What would
+happen if we were building a wrapper around a library that was not
+included by default? Add the following code to the XS example to find out.
+It should print out the version of the XPM library on your system.
+The include directive should go after the Perl includes and the XS
+declaration in the XS section.
+</para>
+
+<programlisting>
+#include &lt;X11/xpm.h&gt;
+
+...
+
+int
+XpmLibraryVersion()
+</programlisting>
+
+<para>
+If the above XS code is added to our example file and built we get
+this:
+</para>
+
+<screen>
+<prompt>%</prompt><userinput> perl Makefile.PL</userinput>
+Checking if your kit is complete...
+Looks good
+Writing Makefile for Example
+<prompt>%</prompt><userinput> make</userinput>
+mkdir blib
+mkdir blib/lib
+mkdir blib/arch
+mkdir blib/arch/auto
+mkdir blib/arch/auto/Example
+mkdir blib/lib/auto
+mkdir blib/lib/auto/Example
+cp Example.pm blib/lib/Example.pm
+/usr/bin/perl -I/usr/lib/perl5/5.6.0/i386-linux -I/usr/lib/perl5/5.6.0
+    /usr/lib/perl5/5.6.0/ExtUtils/xsubpp  
+    -typemap /usr/lib/perl5/5.6.0/ExtUtils/typemap Example.xs 
+    > Example.xsc && mv Example.xsc Example.c
+Please specify prototyping behavior for Example.xs (see perlxs manual)
+gcc -c  -fno-strict-aliasing -O2 -march=i386 -mcpu=i686 -DVERSION=\"0.01\"
+    -DXS_VERSION=\"0.01\" -fPIC -I/usr/lib/perl5/5.6.0/i386-linux/CORE  Example.c
+Running Mkbootstrap for Example ()
+chmod 644 Example.bs
+LD_RUN_PATH="" gcc -o blib/arch/auto/Example/Example.so  -shared 
+    -L/usr/local/lib Example.o     
+chmod 755 blib/arch/auto/Example/Example.so
+cp Example.bs blib/arch/auto/Example/Example.bs
+chmod 644 blib/arch/auto/Example/Example.bs
+</screen>
+
+<para>
+It looks like everything worked fine. Let's try it out:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MExample -e 'Example::print_hello'</userinput>
+Using ..../Example3/blib
+hello, world
+
+<prompt>%</prompt> <userinput>perl -Mblib -MExample -e 'print Example::XpmLibraryVersion'</userinput>
+Using ..../Example3/blib
+perl: error while loading shared libraries: 
+    /home/timj/perl/perlbook/book/Example3/blib/arch/auto/Example/Example.so: 
+    undefined symbol: XpmLibraryVersion
+</screen>
+
+<para>
+The above output indicates that the earlier routines
+(e.g. <function>print_hello</function>) still work but the new routine
+doesn't. The error message indicates that Perl could not find
+<function>XpmLibraryVersion</function> in any of the libraries that it
+has already loaded. This is not surprising since Perl is not linked
+against graphics libraries during a standard build. To overcome this
+problem we can use the <filename>Makefile.PL</filename> to provide the
+information necessary to locate the correct libraries. The
+<filename>Makefile.PL</filename> generated by <command>h2xs</command>
+looks something like this:
+</para>
+
+<programlisting>
+use ExtUtils::MakeMaker;
+# See lib/ExtUtils/MakeMaker.pm for details of how to influence
+# the contents of the Makefile that is written.
+WriteMakefile(
+    'NAME'         => 'Example',
+    'VERSION_FROM' => 'Example.pm', # finds $VERSION
+    'PREREQ_PM'	   => {}, # e.g., Module::Name => 1.1
+    'LIBS'         => [' '], # e.g., '-lm'
+    'DEFINE'       => ' ', # e.g., '-DHAVE_SOMETHING'
+    'INC'          => ' ', # e.g., '-I/usr/include/other'
+);
+</programlisting>
+
+<para>
+The hash provided to <function>WriteMakefile</function> can contain
+many different keys but the ones that are usually modified for simple
+XS projects are LIBS and INC. The LIBS key can be used to specify
+additional libraries that are needed to build the module. The string
+must be in the form expected by the linker on your system. Usually
+this means a format of <userinput>-L/dir/path -lmylib</userinput>
+where <userinput>-L</userinput> indicates additional search
+directories and <userinput>-l</userinput> indicates the name of actual
+libraries.  <footnote><para>On Unix systems
+<userinput>-lmylib</userinput> refers to a file on disk called
+<filename>libmylib.a</filename> or
+<filename>libmylib.so</filename>. The former is a static library, the
+latter is a shared library that is loaded at
+runtime.</para></footnote> <function>WriteMakefile</function> expects
+the LIBS argument to be either a simple scalar or a reference to an
+array. In most cases a scalar is all that is required but the array
+allows multiple sets of library combinations to be provided and
+<classname>MakeMaker</classname> will use the first that refers to a
+library that can be found on disk.  In order to fix our example we
+have to change the LIBS entry so that the <filename>Xpm</filename>
+library will be included:
+</para>
+
+<programlisting>
+'LIBS'	=> '-L/usr/X11R6/lib -lX11 -lXpm', # all X11 programs require -lX11
+</programlisting>
+
+<para>
+Rebuilding the module now gives:
+</para>
+
+    <screenco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="10" id="xsi.mpl.libs">
+      </areaspec>
+    <screen>
+<prompt>%</prompt> <userinput>perl Makefile.PL</userinput>
+Writing Makefile for Example
+<prompt>%</prompt> make
+gcc -c  -fno-strict-aliasing -O2 -march=i386 -mcpu=i686 -DVERSION=\"0.01\" 
+    -DXS_VERSION=\"0.01\" -fPIC -I/usr/lib/perl5/5.6.0/i386-linux/CORE
+    Example.c
+Running Mkbootstrap for Example ()
+chmod 644 Example.bs
+LD_RUN_PATH="/usr/X11R6/lib" gcc -o blib/arch/auto/Example/Example.so
+    -shared -L/usr/local/lib Example.o    -L/usr/X11R6/lib -lX11 -lXpm 
+chmod 755 blib/arch/auto/Example/Example.so
+cp Example.bs blib/arch/auto/Example/Example.bs
+chmod 644 blib/arch/auto/Example/Example.bs
+
+</screen>
+      <calloutlist>
+	<callout arearefs="xsi.mpl.libs">
+	  <para>The value specifed for LIBS appears on this line</para>
+	</callout>
+      </calloutlist>
+    </screenco>
+
+<para>and the test runs as expected:</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MExample -e 'print Example::XpmLibraryVersion'</userinput>
+Using ..../Example3/blib
+30411
+</screen>
+
+
+<para>
+Similarly, extra include paths (reference to chapter 1?) can be added using the
+<varname>INC</varname> key. This value is always a scalar and contains
+a list of directories to search for include files in the format
+expected by your compiler. This is usually of the form
+<userinput>-I/some/dir</userinput>.
+</para>
+
+<sect2>
+<title>It really is a Perl program</title>
+
+<para>
+It is really important to remember that the
+<filename>Makefile.PL</filename> really is a normal Perl program. All
+that matters is that <function>WriteMakefile</function> is called with
+the correct arguments to generate the <filename>makefile</filename>.
+You can write arbritrarily complex code to generate those arguments,
+you can prompt the user for information (e.g. the
+<filename>libnet</filename> package), you can even dynamically
+generate the perl module itself!
+</para>
+
+<para>
+As an example let's suppose we wanted to build an interface to a Gnome library
+<footnote><para>Modules for many Gnome libraries are already on
+CPAN</para></footnote>. Most Gnome libraries come with configuration
+scripts that can be used to determine the required libraries and
+include directories and these must be used inside the
+<filename>Makefile.PL</filename> rather than hard-wiring the location
+of the Gnome system into the program.<footnote><para>Gnome is usually
+installed into <filename>/usr</filename> on Linux but
+<filename>/opt/gnome</filename> on Solaris</para></footnote>
+To support this, the <filename>Makefile.PL</filename> may look
+something like this:
+</para>
+
+<programlisting>
+use ExtUtils::MakeMaker;
+
+# Use gnome-config to determine libs
+my $libs = qx/ gnome-config --libs gnome /;
+
+# Use gnome-config to determine include path
+my $incs = qx/ gnome-config --cflags gnome /;
+
+# Remove new lines
+chomp($libs);
+chomp($incs);
+
+# Might want to exit with an error if the $libs or $incs 
+# variables are empty
+
+# See lib/ExtUtils/MakeMaker.pm for details of how to influence
+# the contents of the Makefile that is written.
+WriteMakefile(
+    'NAME'         => 'Gnome',
+    'VERSION_FROM' => 'Gnome.pm', # finds $VERSION
+    'PREREQ_PM'	   => {}, # e.g., Module::Name => 1.1
+    'LIBS'         => $libs, # all X11 programs require -lX11
+    'DEFINE'       => ' ', # e.g., '-DHAVE_SOMETHING'
+    'INC'          => $incs, # e.g., '-I/usr/include/other'
+);
+</programlisting>
+
+</sect2>
+
+</sect1>
+
+<sect1 id="xsi.design">
+<title>Interface Design - Part 1</title>
+
+<para>
+Now that we have seen how to create Perl interfaces to simple C
+functions and library routines this section will provide some advice
+on how these C routines should behave in a Perl world. 
+</para>
+
+<itemizedlist>
+
+<listitem>
+<para>
+When interfacing Perl to another language it is important to take a
+step back and design the Perl interface so that a Perl programmer
+would be comfortable with it rather than a C programmer.
+</para>
+</listitem>
+
+<listitem>
+<para>
+In C although all arguments are passed by value, arguments can act as
+input arguments, return arguments or both and there is no way to
+distinguish this behaviour from the prototype (knowing you are using a
+pointer can not tell you whether the data will change). In Perl, input
+arguments are supplied and return arguments are returned.  A C
+function such as:
+</para>
+
+	<funcsynopsis>
+	  <!-- one of (FUNCPROTOTYPE FUNCSYNOPSISINFO) -->
+	  <funcprototype>
+	    <funcdef>int <function>compute</function></funcdef> 
+	    <!-- one of (PARAMDEF VARARGS VOID) --> 
+            <paramdef>int <parameter>factor</parameter></paramdef>
+	    <paramdef>double *<parameter>result</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+
+<para>
+that may take take an input integer, store a value into a double (the
+asterisk indicates a pointer in C, we will talk about those in the
+next chapter) and return an integer status is
+almost always better written in perl as:
+</para>
+<programlisting>
+($status, $result) = compute( $factor ); 
+</programlisting>
+<para>
+rather than:
+</para>
+<programlisting>
+$status = compute( $factor, $result );
+</programlisting>
+
+<para>
+In versions of <command>xsubpp</command> prior to v1.9508 the only way
+to do this is to manipulate the argument stack by hand (described in
+<xref linkend="advxs">). In newer versions of
+<command>xsubpp</command> it is possible to indicate that some
+arguments are to be returned differently using modifiers when
+declaring the function signature. 
+</para>
+
+<programlisting>
+REQUIRE: 1.9508            <co id="xsi.eg.outlist.req">
+
+int
+compute( factor, OUTLIST result )
+  int factor
+  double result
+</programlisting>
+<calloutlist>
+<callout arearefs="xsi.eg.outlist.req">
+<para>
+Make sure that we are using a version of <command>xsubpp</command>
+that is new enough.
+</para>
+</callout>
+</calloutlist>
+
+<para>
+The <function>OUTLIST</function> keyword indicates that the argument
+is a return value that should be placed on the output list. In fact,
+if the status is only telling us whether something worked or failed we
+may want to consider removing it completely:
+</para>
+
+	<programlisting>
+$result = compute( $factor );
+</programlisting>
+
+	<para>Returning <literal>undef</literal> if an error
+	occurs. We'll see how to do this in <xref
+	linkend="advxs.design">.</para>
+
+</listitem>
+
+<listitem>
+<para>
+Do not ask the Perl programmer to provide information that Perl
+already knows. For example, the C function might need to know the size
+of a buffer being passed in. Since Perl already knows the length it is
+redundant and error-prone to ask the programmer to provide that
+information explicitly.
+</para>
+
+</listitem>
+
+<listitem>
+<para>
+When interfacing to a library do not blindly import every single
+function into Perl. It is possible that many of the functions are
+support functions needed by the C interface but irrelevant to
+Perl. Additionally many of the constants may not be needed.
+</para>
+</listitem>
+
+<listitem>
+<para>
+Make use of Perl namespaces. Many C libraries use the library name as
+a prefix to every function (for example, many functions in the <ulink
+url="http://www.gnome.org">Gnome</ulink> library start with
+<function>gnome_</function>) so use the package name to indicate that
+information and strip the common prefix. The
+<function>PREFIX</function> keyword can be used for this:
+</para>
+
+	<remark>Maybe choose a non-pointer example here and save
+	pointers for later?</remark>
+
+<programlisting>
+MODULE = GNOME  PACKAGE = GNOME  PREFIX = gnome_
+
+char *
+gnome_util_user_shell()
+</programlisting>
+<para>
+The above XS segment indicates that the function should appear to Perl
+as <userinput>GNOME::util_user_shell</userinput> rather than the more
+verbose and repetitive
+<userinput>GNOME::gnome_util_user_shell</userinput>.
+</para>
+
+</listitem>
+
+<listitem>
+<para>
+If a library provides a single and double precision interface consider
+using just the double precision interface unless there is a major
+performance penalty between the two. This is because all Perl floating
+point variables are already double precision and there is little point
+converting precision when transferring data between Perl and the
+library. If it is necessary to preserve the function names inside Perl
+(but as noted in a previous comment it may be better to adopt
+a more unified interface on the Perl side) 
+it is possible to export both the single and double precisions names 
+but only use the double precision function from the library. XS
+provides a way of doing this using the ALIAS keyword. For example:
+</para>
+<programlisting>
+double
+CalcDouble( arg )
+   double arg
+ ALIAS:
+    CalcFloat = 1
+ CODE:
+    printf("# ix = %d\n", ix );
+    RETVAL = CalcDouble( arg );
+ OUTPUT:
+   RETVAL
+</programlisting>
+
+	<para>Here <function>CalcFloat</function> is setup as an alias
+	for <function>CalcDouble</function>. The <varname>ix</varname>
+	variable is provided automatically and can be used to
+	determine how the function was called. In the above example,
+	if this function is called as <function>CalcDouble</function>
+	<varname>ix</varname> will have a value of
+	<literal>0</literal> whereas ff the function is called as
+	<function>CalcFloat</function> <varname>ix</varname> will have
+	a value of <literal>1</literal>.</para>
+
+</listitem>
+
+</itemizedlist>
+
+</sect1>
+
+<sect1>
+<title>Further Reading</title>
+
+<para>
+More information on Perl modules and XS can be 
+found at the following locations:
+</para>
+
+<variablelist>
+
+      <varlistentry>
+	<term>perlmod</term>
+	<term>perlmodlib</term>
+	<listitem>
+	  <para>Standard Perl manual pages on module creation.</para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+	<term>ExtUtils::MakeMaker</term>
+	<listitem>
+	  <para>Description of <filename>Makefile.PL</filename> options.</para>
+	</listitem>
+      </varlistentry>
+
+      <varlistentry>
+	<term>perlxstut</term>
+	<term>perlxs</term>
+	<listitem>
+	  <para>These are the standard XS tutorial and documentation
+	  that come with Perl itself. They cover everything about perl
+	  and XS but they rapidly move onto advanced topics.</para>
+	</listitem>
+      </varlistentry>
+
+</variablelist>
+
+</sect1>
+
+</chapter>

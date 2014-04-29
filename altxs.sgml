@@ -1,0 +1,1544 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+
+<chapter id="altxs">
+
+<title> Alternatives to XS</title>
+
+  <para>So far we have done all of our Perl interfaces to C using XS and have
+  demonstrated just how powerful and complex XS can be. In this chapter we are
+  going to take a step above XS and show how it is possible to create an
+  interface to C without using XS or reading page after page of
+  documentation. </para>
+
+  <para>We will begin by looking at one of the earliest alternatives to XS and
+  then proceed to the current front-runner for XS simplification. On the way
+  we will address the special demands called for by the Perl Data Language and
+  finish up by covering some of the less useful approaches to ignoring XS. We
+  will make use of the examples from previous chapters to demonstrate the
+  differences and similarities of these approaches.</para>
+
+  <para>Nearly <emphasis>all</emphasis> the schemes described in this chapter
+  are implemented as an abstraction layer above XS itself either by generating
+  <filename>.xs</filename> files to be passed to <command>xsubpp</command> or
+  generating the code equivalent to the output of <command>xsubpp</command>
+  that interfaces directly to perl's internal XS system. This approach has the
+  key advantage that a change to the XS system will only require a fix to the
+  software that processes these definition files, all code that uses these
+  systems will not require modification.</para>
+
+
+  <sect1>
+    <title>h2xs</title>
+
+    <para>By far the oldest attempt at providing a simplified access to XS is
+    the <command>h2xs</command> program that comes with Perl. We have already
+    used this command in <xref linkend="xsintro"> to generate a basic
+    framework for perl and XS-based modules but it can be used to
+    automatically generate XS wrapper code for simple libraries. As the name
+    of the program suggests, it can take a C header file as input and generate
+    a <filename>.xs</filename> file as output. We will not spend much time
+    describing this program in detail but as an example let's see what happens
+    when we run this command on a header file containing prototypes for the
+    <function>print_hello</function> and <function>treble</function> examples
+    used in <xref linkend="xsi.xs">. We can call this file
+    <filename>example.h</filename>:</para>
+
+    <programlisting>
+void print_hello ();
+int treble (int x);
+</programlisting>
+
+    <para>You can then run <command>h2xs</command> with the
+    <option>-x</option> option to force it to scan the header file looking for
+    function prototypes (for this to work you will need to download the
+    <classname>C::Scan</classname> module from CPAN). Without this option
+    <command>h2xs</command> will still attempt to read the include file but it
+    will only be able to extract #define's rather than full XS entries. For
+    our example we get the following output:</para>
+
+    <screen>
+<prompt>%</prompt> <userinput>h2xs -x -c -A example.h</userinput>
+Scanning typemaps...
+ Scanning /usr/lib/perl5/5.7.2/ExtUtils/typemap
+Scanning example.h for functions...
+Scanning example.h for typedefs...
+Writing Example/Example.pm
+Writing Example/Example.xs
+Writing Example/Makefile.PL
+Writing Example/README
+Writing Example/t/1.t
+Writing Example/Changes
+Writing Example/MANIFEST
+</screen>
+
+    <para>The additional options turn off the code for handling constants
+    since this module won't be using any. The output file
+    <filename>Example.xs</filename> contains the following:</para>
+
+    <programlisting>
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include &lt;example.h&gt;
+
+
+MODULE = Example		PACKAGE = Example		
+
+
+void
+print_hello()
+
+int
+treble(x)
+	int	x
+</programlisting>
+
+    <para>and looks identical to that used in <xref linkend="xsi.xs"> except
+    that the actual code for the functions is missing (you would have to put
+    that after the include directives or else create a library to link
+    against).</para>
+
+    <para>In general <command>h2xs</command> is fine for handling simple
+    interfaces using scalar arguments but rapidly runs out of steam. Even with
+    a seemingly simple function such as <function>strconcat</function> from
+    <xref linkend="advxs.pointers"> <command>h2xs</command> gets the wrong
+    answer:</para>
+
+    <programlisting>
+STRLEN
+strconcat(str1, str2, outstr)
+        char *  str1
+        char *  str2
+        char *  outstr
+</programlisting>
+
+
+    <para>It assumes that all arguments are for input and, additionally, the C
+    interface requires that memory is allocated for the output string before
+    use; something that <command>h2xs</command> can not possibly guess.</para>
+
+    <para>If you intend to use <command>h2xs</command> for anything but the
+    simplest interface be prepared to do a lot of work on the file that is
+    automatically generated for you.</para>
+
+  </sect1>
+
+
+<sect1 id="altxs.swig">
+<title>SWIG</title>
+
+    <para>SWIG (standing for Simplified Wrapper and Interface
+    Generator) was developed in 1995 by David Beazley at Los Alamos to
+    simplify the writing of interface code between scripting languages
+    and C/C++ libraries. First for a little known language, and then,
+    in 1996, to cover Tcl, Perl and Guile. Since then it has been
+    developed to cover many more languages including Java. One of the
+    major advantages of SWIG over XS is that it allows you to write a
+    single interface specification and use it for all the languages
+    supported by SWIG. </para>
+
+    <para>Let's start our investigation of SWIG by seeing how to
+    provide a perl interface to the <function>sinh</function> math
+    function (this already exists in the <classname>POSIX</classname>
+    module) and a related constant. All SWIG interfaces begin with the
+    definition of the generic interface definition. For
+    <function>sinh</function> this would look something like:</para>
+
+    <programlistingco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="1" id="altxs.swig.simple.mod">
+	<area coords="3" id="altxs.swig.simple.proto">
+	<area coords="4" id="altxs.swig.simple.const">
+      </areaspec>
+      <programlisting>
+%module Simple
+
+double sinh ( double ang );
+#define PI 3.141592654
+
+</programlisting>
+      <calloutlist>
+	<callout arearefs="altxs.swig.simple.mod">
+	  <para>All SWIG files begin by declaring the module name (if
+	  it is not defined in here it must be specified on the
+	  command line). SWIG commands always start with a per cent
+	  sign.</para>
+	</callout>
+	<callout arearefs="altxs.swig.simple.proto">
+	  <para>This is simply the C prototype for the function we are
+	  trying to call. SWIG can be used to simply parse a C include
+	  file and generate a language interface directly. In general
+	  this is not the recommended approach since C include files
+	  tend to include many functions and data structures that are
+	  not required for the interface itself.</para>
+	</callout>
+	<callout arearefs="altxs.swig.simple.const">
+	  <para>A C pre-processor define will be treated as a constant
+	  variable. Constants can also be defined using the
+	  <literal>%constant</literal> command.</para>
+	</callout>
+      </calloutlist>
+    </programlistingco>
+
+    <para>If we now save the above description to a file
+    <filename>simple.swg</filename> (<filename>simple.i</filename> is
+    a common alternative) we can run SWIG on this file and generate
+    the code required to interface the target language to the library
+    function:</para>
+
+    <screen><prompt>%</prompt> <userinput>swig -perl5 simple.swg</userinput>
+</screen>
+
+    <para>Here we use the <option>perl5</option> option to generate
+    code for Perl rather than another language. Once executed, this
+    command writes a file <filename>simple_wrap.c</filename>
+    containing all the code necessary to call our function from Perl
+    and a small perl wrapper module called
+    <filename>Simple.pm</filename>. With version 1.3.9 of
+    SWIG<footnote> <para>SWIG has undergone a major rewrite between
+    1999 and 2001 and version 1.3.6 was the first stable version
+    released since February 1998 (when version 1.1p5 was
+    released). The examples all used version 1.3.9.</para></footnote>
+    this C output file is approximately 10kB; impressively large for a
+    2 line interface description file. The important thing to realise
+    is that the output code is C that can be compiled and linked as a
+    module directly as <command>xsubpp</command> is not required
+    here. To convince yourself this is the case look in
+    <filename>simple_wrap.c</filename> and you will find the following
+    XS code (or something similar) for <function>sinh</function>:</para>
+
+    <programlisting>
+XS(_wrap_sinh) {
+    double arg0 ;
+    int argvi = 0;
+    double result ;
+    dXSARGS;
+    
+    if ((items < 1) || (items > 1)) 
+    croak("Usage: sinh(ang);");
+    arg0 = (double )SvNV(ST(0));
+    result = (double )sinh(arg0);
+    ST(argvi) = sv_newmortal();
+    sv_setnv(ST(argvi++), (double) result);
+    XSRETURN(argvi);
+}
+</programlisting>
+
+    <para>Unsurprisingly this is very similar to the code generated by
+    <command>xsubpp</command> (see for example <xref
+    linkend="advxs.inside">). Once you've got this C code the next
+    step is to compile it and link it as a shared library such that it
+    can be used as a module. Rather than doing this manually we can do
+    it using <classname>MakeMaker</classname> as for any other
+    module. Here is the <filename>Makefile.PL</filename>:</para>
+
+    <programlisting>
+use ExtUtils::MakeMaker;
+
+WriteMakefile(
+              'NAME'      => 'Simple',
+              'VERSION'   => '0.01',
+              'OBJECT'    => 'simple_wrap.o',
+);
+</programlisting>
+
+    <para>The key difference here between an XS module and a SWIG
+    module is that we don't need to run <command>xsubpp</command> and
+    <classname>MakeMaker</classname> just needs to compile a C
+    file. We do this by using the <varname>OBJECT</varname> hash key
+    to tell <classname>MakeMaker</classname> the names of the object
+    files that we wish to use to form the module. The makefile will
+    automatically add the code for compiling the corresponding C files
+    to object files. We can now build the module as we would any other
+    XS module:</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>perl Makefile.PL</userinput>
+Writing Makefile for Simple
+<prompt>%</prompt> <userinput>make</userinput>
+cp Simple.pm blib/lib/Simple.pm
+cc -c   -fno-strict-aliasing -I/usr/local/include -D_LARGEFILE_SOURCE 
+ -D_FILE_OFFSET_BITS=64 -O2   -DVERSION=\"0.01\" -DXS_VERSION=\"0.01\" 
+  -fpic -I/home/timj/test/lib/perl5/5.7.2/i686-linux/CORE   simple_wrap.c
+Running Mkbootstrap for Simple ()
+chmod 644 Simple.bs
+rm -f blib/arch/auto/Simple/Simple.so
+LD_RUN_PATH="" cc  -shared -L/usr/local/lib simple_wrap.o  
+    -o blib/arch/auto/Simple/Simple.so     
+chmod 755 blib/arch/auto/Simple/Simple.so
+cp Simple.bs blib/arch/auto/Simple/Simple.bs
+chmod 644 blib/arch/auto/Simple/Simple.bs
+</screen>
+
+    <para>You could include a makefile dependency for the SWIG input
+    file itself (running SWIG on it when it is modified) but for a
+    distribution that is to be put on CPAN you probably will not want
+    to add a SWIG dependency to your distribution since that may limit
+    its appeal (many sites may not have SWIG installed and you will
+    not be able to guarantee a particular version of SWIG). We can now
+    run it to see if it does what we expect:</para>
+
+    <screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MSimple -e 'print Simple::sinh(3)'</userinput>
+10.0178749274099
+<prompt>%</prompt> <userinput>perl -Mblib -MSimple -e 'print $Simple::PI'</userinput>
+3.141592654
+</screen>
+
+    <para>As an ever so slightly more complicated example let's take a
+    look at how we would write an interface file for the
+    <function>treble</function> of <xref linkend="xsi.xs">:</para>
+
+<programlisting>
+%module Treble
+
+%{
+
+int treble(int x)
+{
+   x *= 3;
+   return x;
+}
+
+%}
+
+int treble (int x);
+</programlisting>
+
+    <para>The difference here is that C code has been inserted into
+    the definition. The code between <literal>%{</literal> and
+    <literal>%}</literal> is copied directly from the definition file
+    to the output C code. This is where you can put include file
+    loading as well as actual C code. This module can be built in
+    exactly the same way as the <classname>Simple</classname>
+    module.</para>
+
+    <sect2>
+      <title>Arrays and Structs</title>
+
+      <para>As already mentioned, one thing that distinguishes SWIG
+      from other approaches such as XS or
+      <classname>Inline</classname> is its language agnostic
+      approach. In many cases this is beneficial but when it comes to
+      dealing with complicated data structures the approach usually
+      leads to modules that do not fit in well with the language
+      philosophy. In SWIG all complex data types (i.e. pointer types)
+      are treated as opaque objects. This means that arrays and
+      structures are always treated as pointers. In most cases this is
+      fine since many libraries use structures as opaque entities
+      already and simply pass the pointer from function to
+      function. Additionally, if the components of the structure are
+      defined SWIG will generate accessor methods to enable access to
+      the individual structure components.</para>
+
+      <para>In this section we'll examine the use of structures from
+      SWIG by looking at the <function>gmtime</function> and related
+      functions that we used for the examples in <xref
+      linkend="advxs.cstruct">. Here is a simple SWIG interface to
+      <function>gmtime</function>, <function>asctime</function> and
+      <function>mktime</function>:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="4" id="altxs.swig.include">
+	  <area coords="7" id="altxs.swig.typedef">
+	  <area coords="9" id="altxs.swig.typemap">
+	  <area coords="10" id="altxs.swig.sviv">
+	  <area coords="11" id="altxs.swig.pntr">
+	</areaspec>
+	<programlisting>
+%module Time
+
+%{
+#include "time.h"
+%}
+
+typedef int time_t;
+
+%typemap(perl5, in) time_t * (time_t temp) {
+  temp = SvIV( $source );
+  $target = &amp;temp;
+}
+
+struct tm *gmtime(time_t * timep);
+char * asctime( const struct tm *timeptr);
+time_t mktime( struct tm *timeptr);
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="altxs.swig.include">
+	    <para>This C code simply makes sure that the C
+	    declarations are available when the module is built (the
+	    include directive is passed straight to the output C
+	    code).</para>
+	  </callout>
+	  <callout arearefs="altxs.swig.typedef">
+	    <para>Tell SWIG that a <type>time_t</type> is an integer.</para>
+	  </callout>
+	  <callout arearefs="altxs.swig.typemap">
+	    <para>Declare a new input typemap for variables of type
+	    <type>time_t *</type> specifically for use with Perl5 (to
+	    use this SWIG file for other languages you will need to
+	    define different typemaps in the same file). This typemap
+	    also declares an additional varialbe similar to PREINIT in
+	    XS.</para>
+	  </callout>
+	  <callout arearefs="altxs.swig.sviv">
+	    <para>Retrieve the integer associated with the input
+	    scalar and store it in a temporary variable.</para>
+	  </callout>
+	  <callout arearefs="altxs.swig.pntr">
+	    <para>Store the pointer of the temporary variable in the
+	    target variable.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>This looks really straightforward except for the
+      complication of the typemap definition (the
+      <function>typedef</function> is there simply to tell SWIG that a
+      <varname>time_t</varname> can be treated as an integer). The
+      problem is that <function>gmtime</function> expects a pointer to
+      a <type>time_t</type> variable rather than a simple variable of
+      type <type>time_t</type>. We could write a wrapper C routine
+      that allocates memory and populates the value, returning a
+      pointer to perl that can be passed to this function but it is
+      much simpler from the perl perspective to write a typemap that
+      will convert a simple integer (usually the output of the perl
+      <function>time</function> function) to a pointer. If we build
+      this module and run we can see the following:</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e 'print Time::gmtime(time)'</userinput>
+_p_tm=SCALAR(0x8107cc8)
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e '$t=Time::gmtime(time); print Time::asctime($t)'</userinput>
+Tue Nov 13 02:22:55 2001
+</screen>
+
+      <para>SWIG has provided us with an interface even though it
+      doesn't know what the contents of a <varname>tm</varname>
+      structure are. All you get is a blessed scalar of an unhelpful
+      class (in this case <classname>_p_tm</classname> since this is a
+      pointer to a <varname>tm</varname>) which SWIG can use for
+      internal type consistency checking. If you want to be able to
+      look inside the structure you simply tell SWIG what it
+      contains:</para>
+
+      <programlisting>
+%module Time
+
+%{
+#include "time.h"
+%}
+
+typedef int time_t;
+
+%typemap(perl5, in) time_t * (time_t temp) {
+  temp = SvIV( $source );
+  $target = &amp;temp;
+}
+
+struct tm
+{
+  int tm_sec;                   /* Seconds.     [0-60] (1 leap second) */
+  int tm_min;                   /* Minutes.     [0-59] */
+  int tm_hour;                  /* Hours.       [0-23] */
+  int tm_mday;                  /* Day.         [1-31] */
+  int tm_mon;                   /* Month.       [0-11] */
+  int tm_year;                  /* Year - 1900.  */
+  int tm_wday;                  /* Day of week. [0-6] */
+  int tm_yday;                  /* Days in year.[0-365] */
+  int tm_isdst;                 /* DST.         [-1/0/1]*/
+};
+
+
+struct tm *gmtime(time_t * timep);
+char * asctime( const struct tm *timeptr);
+time_t mktime( struct tm *timeptr);
+
+</programlisting>
+
+      <para>Now if we use this module we can find out the time from
+      the structure:</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e '$t=Time::gmtime(time); print Time::tm_tm_year_get($t)'</userinput>
+101
+</screen>
+
+      <para>SWIG automatically creates accessor function (there is a
+corresponding set method). In this case the function is an accessor
+for the <varname>tm_year</varname> field in the struct
+<varname>tm</varname> so the name is a bit repetitive. Since this
+approach is clearly not going to win any fans with users of your class
+SWIG provides an option for handling structures as true Perl
+objects. If you use the <option>-shadow</option> option to SWIG the
+interface looks much more agreeable:</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>swig -perl5 -shadow time.swg</userinput>
+<prompt>%</prompt> <userinput>make</userinput>
+...
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e '$t=Time::gmtime(time); print $t'</userinput>
+Time::tm=HASH(0x8144648)
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e '$t=Time::gmtime(time); print $t->mktime;'</userinput>
+1005656269
+<prompt>%</prompt> <userinput>perl -Mblib -MTime -e '$t=Time::gmtime(time); print $t->{tm_year}'</userinput>
+101
+</screen>
+
+      <para>The above example shows that the structure is converted to
+      an object in class <classname>Modulename::structname</classname>
+      and can be used to invoke methods (in this case
+      <function>mktime</function>) and to access object instance data
+      via a tied hash interface.</para>
+
+      <remark>Still to do with SWIG section if required: Something on
+      memory management, an explicit example of array use (including
+      N-Dim arrays with accessor methods?), maybe more explicit typemap
+      examples. Again, depends on how deeply we want to go before
+      moving people onto the SWIG documentation. 4.5 pages so far so
+      can probably justify a couple more to round the chapter out at
+      approximately 20 pages (without diagrams).</remark>
+
+    </sect2>
+
+</sect1>
+
+  <sect1 id="altxs.inline">
+    <title>The <classname>Inline</classname> module</title>
+
+    <para>The <classname>Inline</classname> modules were first
+    developed in 2000 by Brian Ingerson in order to simplify the XS
+    learning curve. The family of <classname>Inline</classname>
+    modules allow you to write non-Perl code within the body of your
+    Perl program with the expectation that Perl will know what to do
+    with it. This can be demonstrated by showing the
+    <classname>Inline</classname> version of our first XS examples
+    from <xref linkend="xsi.xs">.</para>
+
+    <sidebar>
+      <para><classname>Inline</classname> is not distributed as part of
+      Perl. You will need to download it and its dependencies (such as the
+      <classname>Parse::RecDescent</classname> module) from CPAN before you
+      can run any of these examples</para>
+    </sidebar>
+
+    <programlisting>
+use Inline "C";
+
+print treble(5),"\n";
+&amp;print_hello;
+
+__END__
+__C__
+void print_hello ()
+{
+   printf("hello, world\n");
+}
+
+int treble(int x)
+{
+   x *= 3;
+   return x;
+}
+</programlisting>
+
+    <para>If you run this program it does exactly what you expect. No need to
+    create a module and work out the XS syntax; it just works. You should get
+    the following output:</para>
+
+    <screen>
+15
+hello,world
+</screen>
+
+    <para>The first time you run it it will probably take a few seconds to
+    execute. The second time it will run as fast as you would expect the XS
+    version to run.</para>
+
+    <para><classname>Inline</classname> itself is not limited to
+    C. Modules exist for writing and calling C++, Python and Java code
+    from perl. As an introduction to the techniques of using
+    <classname>Inline</classname> we will keep our description to the
+    C implementation but if you are interested in other languages CPAN
+    will probably have them all covered!</para>
+
+    <sect2>
+      <title>What is going on?</title>
+
+      <para>Before we rush headlong into more examples, it may be
+      instructive to explain what is really happening here.<footnote>
+      <para>At least, what is happening with version 0.43 of
+      <classname>Inline</classname>. Development of this module is
+      fairly rapid so things may have changed to some extent by the
+      time you read this.</para></footnote> When you write a Perl
+      program using <classname>Inline</classname> unsurprisingly a lot
+      of work is going on behind the scenes. In outline, the following
+      is occurring:</para>
+
+      <orderedlist>
+	<listitem>
+	  <para>The module reads the code from the appropriate place
+	  (usually below the <varname>DATA</varname> handle).</para>
+	</listitem>
+	<listitem>
+	  <para>An MD5 checksum is then calculated for the code in
+	  question.</para>
+	</listitem>
+	<listitem>
+	  <para>This checksum and associated information (such as
+	  operating system and perl version number) is compared with
+	  any modules that may have been automatically generated on
+	  previous occasions (this all happens in the
+	  <filename>_Inline</filename> or
+	  <filename>$HOME/.inline</filename> directory unless
+	  specified otherwise). If it does not match with any
+	  existing checksum or configuration the code is analysed to
+	  determine the function names and calling arguments (maybe
+	  using a parser module such as
+	  <classname>Parse::RecDescent</classname>).</para>
+	</listitem>
+	<listitem>
+	  <para>An XS module is then generated based on the functions
+	  and arguments in the inlined code and with a name derived
+	  from the checksum (If no name is specified the module will
+	  be the name of the file containing the original code with
+	  punctuation removed and the first few letters of the
+	  checksum).</para>
+	</listitem>
+	<listitem>
+	  <para>The module is now built and installed into a local
+	  directory.</para>
+	</listitem>
+	<listitem>
+	  <para>Alternatively, if the checksum matches with a checksum
+	  calculated during a previous run of the program the module
+	  is loaded directly with out being compiled.</para>
+	</listitem>
+      </orderedlist>
+
+      <para>In essence this is fairly straightforward. A module is
+      built automatically if required, else it is simply loaded as for
+      any other module. This explains why an inlined program takes a
+      while to run the first time through but is then almost as fast
+      as for a normal module on subsequent runs. The main complication
+      is the parsing of the C code to generate XS specifcation. The
+      relationship between <classname>Inline</classname> and the
+      approaches of SWIG and XS is shown in <xref
+      linkend="altxs.layers">.</para>
+
+      <figure id="altxs.layers" float="1">
+	<title>Conceptual relationship between
+	<classname>Inline</classname>, SWIG and XS.</title>
+	<mediaobject>
+	  <imageobject>
+	    <imagedata fileref="layers.eps" format="eps">
+	  </imageobject>
+	  <imageobject>
+	    <imagedata fileref="layers.png" format="png">
+	  </imageobject>
+	  <caption>
+	    <para>This diagram shows the conceptual relationship
+	    between the three most popular ways to integrate C with
+	    Perl. From this you can see that
+	    <classname>Inline</classname> goes through an XS layer
+	    whereas SWIG cuts out the middle man and goes straight to
+	    the low level API.</para>
+	  </caption>
+	</mediaobject>
+      </figure>
+
+
+    </sect2>
+
+    <sect2>
+      <title>Some more examples</title>
+
+      <para>Now that we have seen the magic and have an idea of what
+      is really happening we should now tak a look at some more
+      serious examples. Anything that simply passes some scalar
+      arguments in and gets a return value should look just like a
+      normal C function. In this section we'll cover memory allocation
+      issues, lists and multiple return arguments since these are the
+      most likely sources of confusion.</para>
+
+      <sect3>
+	<title>Strings and things</title>
+
+	<para>If your function returns a string (essentially a memory
+	buffer) that has been created in your function then you will
+	likely have to worry about memory allocation. We can examine
+	this issue by using the string concatenation example of <xref
+	linkend="advxs.pointers">. This function took two strings and
+	returned the concatenated string. In that example we used
+	<function>New</function> and <function>Safefree</function> for
+	the memory allocation. This was okay but it relied on the
+	<function>CLEANUP</function> section of the XS code running
+	after the memory buffer had been copied back onto the argument
+	stack. With <classname>Inline</classname> we can not get away
+	with this since we are being called by the XS routine so if we
+	return a <type>char*</type> we have no way of freeing it after
+	it has been returned. To overcome this problem we have two
+	choices:</para>
+	<itemizedlist>
+	  <listitem>
+	    <para>Return an SV containing the result rather than
+	    returning a <type>char*</type>. This allows you to free
+	    the memory before returning from your function since the
+	    string is copied into an SV:</para>
+	    <programlistingco>
+	      <areaspec>
+		<!-- one of (AREASET AREA) -->
+		<area coords="1" id="altxs.inline.str.svret">
+		<area coords="5" id="altxs.inline.str.new">
+		<areaset coords="7" id="altxs.inline.str.cpy">
+		  <area coords="7" id="altxs.inline.str.cpy1">
+		  <area coords="8" id="altxs.inline.str.cpy2">
+		</areaset>
+		<area coords="10" id="altxs.inline.str.newsv">
+		<area coords="11" id="altxs.inline.str.free">
+		<area coords="12" id="altxs.inline.str.retsv">
+
+	      </areaspec>
+	      <programlisting>
+SV * strconcat( char * str1, char * str2 ) {
+  char * outstr;
+  SV* outsv;
+  int len = strlen(str1) + strlen(str2) +1;
+  New(0, outstr, len, char);
+
+  strcpy( outstr, (const char*)str1 );
+  strcat( outstr, (const char*)str2 );
+
+  outsv = newSVpv(outstr, len);
+  Safefree(outstr);
+  return outsv;
+}
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="altxs.inline.str.svret">
+		  <para>We mark this function as returning an
+		  <type>SV*</type>.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str.new">
+		  <para>Allocate a string buffer of the right size.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str.cpy">
+		  <para>These two lines are the core of the
+		  <function>strconcat</function> function described in
+		  earlier chapters. They represent a real-world call
+		  to an external library. Of course, implementing this
+		  function using the perl SV API is much
+		  easier!</para>
+		</callout>
+		<callout arearefs="altxs.inline.str.newsv">
+		  <para>Create a new SV and copy the contents of the
+		  string buffer into it.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str.free">
+		  <para>Free the buffer since we don't need it any
+		  longer.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str.retsv">
+		  <para>Return the <type>SV*</type>. It is
+		  automatically marked as mortal by XS before being
+		  put onto the return stack.</para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+
+	    <para>This is a little inefficient since you actually end
+	    up allocating two string buffers: once for the string
+	    buffer you are using and once when you create the SV. In
+	    fact, since you are going to the trouble of using an SV
+	    you may as well use the SV's buffer directly:</para>
+
+	    <programlistingco>
+	      <areaspec>
+		<!-- one of (AREASET AREA) -->
+		<area coords="4" id="altxs.inline.str2.newsv">
+		<areaset coords="6" id="altxs.inline.str2.svpvx">
+		  <area coords="6" id="altxs.inline.str2.svpvx1">
+		  <area coords="7" id="altxs.inline.str2.svpvx2">
+		</areaset>
+		<areaset coords="9" id="altxs.inline.str2.flags">
+		  <area coords="9" id="altxs.inline.str2.svpok">
+		  <area coords="10" id="altxs.inline.str2.svcur">
+		</areaset>
+	      </areaspec>
+	      <programlisting>
+SV * strconcat( char * str1, char * str2 ) {
+  SV* outsv;
+  int len = strlen(str1) + strlen(str2) +1;
+  outsv = NEWSV(0, len);
+
+  strcpy( SvPVX(outstr), (const char*)str1 );
+  strcat( SvPVX(outstr), (const char*)str2 );
+
+  SvPOK_on(outsv);
+  SvCUR_set(outsv, len);
+  return outsv;
+}
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="altxs.inline.str2.newsv">
+		  <para>Create a new SV with a string buffer of the
+		  correct size.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str2.svpvx">
+		  <para>We use the <function>SvPVX</function> macro to
+		  obtain the <type>char*</type> pointing to the start
+		  of the buffer.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str2.flags">
+		  <para>Now that we have populated the string we need
+		  to tell Perl that the string component is valid and
+		  what its useful length is.</para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+
+	    <para>This has the added inconvenience of having to mark
+	    the SV as a valid string (<function>SvPOK</function>) and
+	    the length of it (<function>SvCur</function>) but you only
+	    allocate one buffer.</para>
+
+	  </listitem>
+	  <listitem>
+	    <para>Do what XS does and simply create a new SV with the
+	    result and push it onto the stack ourselves. This is
+	    essentially identically to returning an <type>SV*</type>
+	    to <classname>Inline</classname> but cuts out the middle
+	    man. We'll describe how to manipulate the argument stack
+	    from <classname>Inline</classname> in the next
+	    section.</para>
+	  </listitem>
+	  <listitem>
+	    <para>If you really need to allocate a buffer and return
+	    it as a non-SV then you will have to use a memory
+	    allocator that makes use of mortal SVs:</para>
+
+	    <programlistingco>
+	      <areaspec>
+		<!-- one of (AREASET AREA) -->
+		<area coords="4" id="altxs.inline.str3.getmem">
+		<area coords="11" id="altxs.inline.str3.getmortal">
+	      </areaspec>
+	      <programlisting>
+char * strconcat3( char * str1, char * str2 ) {
+  char* outstr;
+  int len = strlen(str1) + strlen(str2) + 1;
+  outstr = (char *)get_mortalspace( len );
+  strcpy( outstr, (const char*)str1 );
+  strcat( outstr, (const char*)str2 );
+
+  return outstr;
+}
+
+void * get_mortalspace ( size_t nbytes ) {
+  SV * mortal;
+  mortal = sv_2mortal( NEWSV(0, nbytes ) );
+  return (void *)SvPVX(mortal);
+}
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="altxs.inline.str3.getmem">
+		  <para>Allocate some memory for the buffer.</para>
+		</callout>
+		<callout arearefs="altxs.inline.str3.getmortal">
+		  <para>This is the memory allocator described in
+		  <xref linkend="advxs.char.strings">. It is here
+		  explicitly rather than putting it in an external
+		  file. This does mean that
+		  <classname>Inline</classname> will create a perl
+		  interface for the function even though it is not
+		  required (if you call it, the function will allocate
+		  the requested number of points and free it before
+		  you get the return value. The return value will be a
+		  pointer).</para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+
+	    <para>The XS code will receive the <type>char*</type> put
+	    it into an SV and push it onto the argument stack. Once it
+	    is read from the stack the memory associated with the SV
+	    will be freed automatically.</para>
+
+	  </listitem>
+	</itemizedlist>
+
+      </sect3>
+
+      <sect3>
+	<title>Summing an array</title>
+
+	<para>In <xref linkend="advxs.numarr"> we covered in detail
+	how to handle perl arrays in XS in the form of a list, a
+	reference and a packed string. Here we will show how to use
+	<classname>Inline</classname> to deal with lists and an array
+	reference.</para>
+
+	<para>First a reference. Since a reference is a scalar and a
+	corresponding typemap entry exists this is fairly easy to do
+	with <classname>Inline</classname>:</para>
+
+	  <programlisting>
+use Inline "C";
+
+print sum_as_ref([1..10]);
+
+__END__
+__C__
+
+int sum_as_ref(AV* avref)
+{
+  int len;
+  int i;
+  int sum = 0;
+  SV ** elem;
+
+  len = av_len(avref) + 1;
+
+  for (i=0; i&lt;len; i++) {
+    elem = av_fetch(avref, i, 0);
+    if (elem != NULL)
+       sum += SvIV( *elem );
+  }
+  return sum;
+}
+</programlisting>
+
+	<para>The above code is almost identical to the example using
+	XS (for clarity we are doing the sum in place rather than
+	calling the external C routine) and there is nothing new in it
+	at all.</para>
+
+	<para>When processing lists things get more
+	interesting. <classname>Inline</classname> generates the XS
+	code for our function and then calls our function. This means
+	that we can no longer rely on XS to provide all the stack
+	handling facilities that we are familiar
+	with. <classname>Inline</classname> overcomes this problem by
+	providing some simple macros of its own for initialising the
+	stack variables and manipulating it. These can be demonstrated
+	in the following code (without the perl code removed since it
+	will be nearly identical to the previous example):</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="inline.list.arg">
+	    <area coords="7" id="inline.list.stackinit">
+	    <area coords="9" id="inline.list.stacknum">
+	    <area coords="11" id="inline.list.stackitem">
+	    <area coords="12" id="inline.list.sviv">
+	  </areaspec>
+	  <programlisting>
+int sum_as_list( SV* arg1, ... )
+{
+  int i;
+  int len;
+  int sum = 0;
+  SV* elem;
+  Inline_Stack_Vars;
+
+  len = Inline_Stack_Items;
+  for (i=0; i&lt;len; i++) {
+    elem = Inline_Stack_Item(i);
+    sum += SvIV( elem );
+  }
+  return sum;
+}
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="inline.list.arg">
+	      <para>Ellipsis (...) are used to indicate to
+	      <classname>Inline</classname> that multiple arguments
+	      will be used. At least one argument has to be declared
+	      even though you may be retrieving all the stack
+	      variables using the macros. In this case
+	      <varname>arg1</varname> is declared but is not used in
+	      the function directly (it is used via
+	      <function>Inline_Stack_Item(0)</function>).</para>
+	    </callout>
+	    <callout arearefs="inline.list.stackinit">
+	      <para>Initialise the stack-related variables used by the
+	      othe stack macros. This must always be placed in the
+	      variable declaration section of the function.</para>
+	    </callout>
+	    <callout arearefs="inline.list.stacknum">
+	      <para>This counts the number of arguments on the stack.</para>
+	    </callout>
+	    <callout arearefs="inline.list.stackitem">
+	      <para>Retrieve the i'th SV from the stack.</para>
+	    </callout>
+	    <callout arearefs="inline.list.sviv">
+	      <para>Now that we have the <type>SV*</type> from the
+	      stack, retrieve the associated integer and add it into
+	      the sum.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+	<para>Rather than use the <varname>T_ARRAY</varname> typemap
+	entry to do this (which would require us to provide a memory
+	allocator as well as losing information about the size of the
+	array) we have written this using
+	<classname>Inline</classname>'s stack macros. Since the set of
+	macros is limited they are designed to be very simple and easy
+	to understand rather than having to face the daunting contents
+	of the perl internals documentation. Using them has the
+	additional advantage that you are not tied to the perl XS
+	macros themselves - if XS is changed or replaced then it is
+	likely that your <classname>Inline</classname> module would
+	continue working without any problems.</para>
+
+      </sect3>
+
+      <sect3>
+	<title>Multiple return arguments</title>
+
+	<para>Just as we can read multiple arguments off the stack we
+	can also push return arguments onto the stack using
+	<classname>Inline</classname> macros. Here is how we would
+	implement the function to return the current time in a hash
+	that was described earlier in <xref
+	linkend="advxs.cstruct.retlist">:</para>
+
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="altxs.inline.ppcode.void">
+	    <area coords="4" id="altxs.inline.ppcode.stackvars">
+	    <area coords="5" id="altxs.inline.ppcode.stackreset">
+	    <area coords="9" id="altxs.inline.ppcode.stackpush">
+	    <area coords="26" id="altxs.inline.ppcode.stackdone">
+	  </areaspec>
+	  <programlisting>
+void gmtime_as_list( time_t clock )
+{
+  struct tm * tmbuf;
+  Inline_Stack_Vars;
+  Inline_Stack_Reset;
+
+  tmbuf = gmtime( &amp;clock );
+
+  Inline_Stack_Push( sv_2mortal( newSVpv("sec", 3) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_sec) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("min", 3) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_min) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("hour", 4) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_hour) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("mday", 4) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_mday) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("mon", 3) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_mon) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("year", 4) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_year) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("wday", 4) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_wday) ));
+  Inline_Stack_Push( sv_2mortal( newSVpv("yday", 4) ));
+  Inline_Stack_Push( sv_2mortal( newSViv(tmbuf-&gt;tm_yday) ));
+
+  Inline_Stack_Done;
+}
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="altxs.inline.ppcode.void">
+	      <para>Just as for XS we use a <type>void</type> return
+	      type when we are pushing arguments onto the stack
+	      ourselves.</para>
+	    </callout>
+	    <callout arearefs="altxs.inline.ppcode.stackvars">
+	      <para>This initializes the stack variables used by the
+	      other macros.</para>
+	    </callout>
+	    <callout arearefs="altxs.inline.ppcode.stackreset">
+	      <para>This must be used before any variables are pushed
+	      onto the stack. It resets the stack pointer to the
+	      beginning of the stack (rather than at the end of the
+	      input arguments).</para>
+	    </callout>
+	    <callout arearefs="altxs.inline.ppcode.stackpush">
+	      <para>Push an SV onto the stack. This is completely
+	      equivalent to <function>XPUSHs</function>.</para>
+	    </callout>
+	    <callout arearefs="altxs.inline.ppcode.stackdone">
+	      <para>Use this macro to indicate when all the necessary
+	      variables have been pushed onto the stack.</para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+
+	<para>All we have done here is replace
+	<function>PUSHs</function> with
+	<function>Inline_Stack_Push</function>. It's as simple as
+	that!</para>
+
+      </sect3>
+
+    </sect2>
+
+    <sect2>
+      <title>Summary</title>
+
+      <para><classname>Inline</classname> is a very powerful addition
+      to your armoury. With only a small loss in overall flexibility
+      (much of which you won't miss) you can mix perl and C code
+      without ever having to worry about makefiles and XS syntax. All
+      you need is a knowledge of the variable manipulation API and
+      possibly typemaps. The main things to be aware of are:</para>
+
+      <itemizedlist>
+	<listitem>
+	  <para>You can not have input arguments that are also return
+	  arguments. If you need this simply use the SV* as an
+	  argument and modify it directly. For example,</para>
+	  <programlisting>
+void modify_inplace( SV* sv) {
+  sv_setiv(sv, 5);
+}
+</programlisting>
+	  <para>If the above function is called via
+	  <classname>Inline</classname> then the scalar argument will
+	  be set to <literal>5</literal> on completion. Also, as
+	  mentioned in <xref linkend="xsi.design"> in many cases the interface
+	  is better designed handling this in a different way.</para>
+	</listitem>
+	<listitem>
+	  <para>Be careful with memory allocation. You will not be
+	  able to explicitly free memory when you return from your
+	  <classname>Inline</classname> function (especially if you
+	  have allocated memory for a string buffer that is to be
+	  returned) so either just use an SV directly (either by
+	  pushing it on the stack or by returning it) or allocate
+	  memory using mortal SV's
+	  (<function>sv_2mortal(NEWSV(..))</function> and return the
+	  buffer pointer with <function>SvPVX</function>) rather than
+	  with <function>New</function>.</para>
+	</listitem>
+      </itemizedlist>
+
+      <para>We can not cover all of <classname>Inline</classname> here
+      but hopefully this section has given a taste of what is
+      possible.</para>
+
+      <remark>If we want to flesh out this section we could include
+      instructions on how to package these into modules (without
+      installing Inline) and how to link against external
+      libraries. In general I think that is probably overkill since
+      this chapter exists to fill the reader with wonder at the
+      possibilities - they can read up further themselves.</remark>
+
+    </sect2>
+
+  </sect1>
+
+  <sect1 id="altxs.pdlpp">
+    <title>PDL::PP</title>
+
+<para>We saw in <xref linkend="advxs.xspdl"> that creating interfaces to from
+the Perl Data Language to external libraries using XS is quite complex. In
+addition to the native complexity of PDL there are four issues that further
+complicate PDL/XS interfaces:</para>
+
+    <variablelist>
+      <varlistentry>
+	<term>Data typing</term>
+	<listitem>
+	  <para>Many libraries have different routines for different data
+	  types. Writing XS interfaces that are identical except for the data
+	  type of the PDL is time consuming and error prone.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>Slicing</term>
+	<listitem>
+	  <para>When a subsection of a PDL is used PDL does not make a copy
+	  (data can be modified <quote>in place</quote>). If a slice is passed
+	  to XS the pointer will not be referring to the start of the slice
+	  but the start of the parent PDL!</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>PDL <quote>threading</quote></term>
+	<listitem>
+	  <para>One nice feature of PDL is its ability to automatically
+	  <quote>thread</quote> over additional dimensions. This has to be
+	  implemented in C for speed but is essentially impossible to get
+	  right if it is coded <quote>by hand</quote>.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>Changes in API</term>
+	<listitem>
+	  <para>If the internal API for either PDL or Perl is modified it is
+	  highly likely that the XS code would have to be fixed. Writing XS
+	  code that works for multiple versions of internals API is difficuly
+	  and quickly leaves to an <quote>ifdef forest</quote> of C pre
+	  processor directives.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+    <para>To solve the above issues a PDL pre-processor language was written
+    to abstract out the numeric interface from the XS implementation. These
+    interface definitions (using a file suffix of <filename>.pd</filename>)
+    are automatically processed by the <classname>PDL::PP</classname> module
+    to generate the required XS code. <classname>PDL::PP</classname>
+    automatically generates code for multiple data types, keeps track of
+    slicing and implement threading. If the API is changed all that
+    needs to be modified is <classname>PDL::PP</classname>, PDL itself can be
+    rebuilt with minimal changes.</para>
+
+    <para>In fact the primary goal of <classname>PDL::PP</classname> is to
+    allow numerical code to be written in a C-like language (for speed)
+    without having to worry about XS. Support for external libraries is a side
+    effect of this goal. <classname>PDL::PP</classname> is an extremely
+    complicated module and no attempt will be made to describe all it's
+    features. What we will show is how to write a
+    <classname>PDL::PP</classname> interface to the <function>sum</function>
+    described in <xref linkend="advxs">.</para>
+
+    <sect2>
+      <title>The <filename>.pd</filename> file</title>
+
+      <para>Instead of using a <filename>.xs</filename> file
+      <classname>PDL::PP</classname> code is written to a
+      <filename>.pd</filename> file. In this example we'll create a file
+      called <filename>sum.pd</filename> to hold the definitions.  This file
+      is a perl program that is run as part of the make process (see the next
+      section to see how). This program creates the normal XS infrastructure:
+      the XS file and the associated perl module. For this example the first
+      thing we need to do is to supply the code for the
+      <function>sum</function> itself. We do this using the
+      <function>pp_addhdr</function> . This function is used to place
+      additional C code at the top of the output XS file (before the MODULE
+      line). That C code is supplied as an argument:</para>
+
+      <programlisting>
+pp_addhdr('
+
+int sum ( int num, int * array ) {
+  int thesum = 0;
+  int count;
+  for (count = 0; count < num; count++) {
+    thesum += array[count];
+  }
+  return thesum;
+}
+
+');
+</programlisting>
+
+      <para>Now that the C function is present we can supply the PP code for
+      the PDL interface. We do this using the <function>pp_def</function>
+      function:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="1" id="altxs.pdlpp.ppdef.sum">
+	  <area coords="2" id="altxs.pdlpp.ppdef.pars">
+	  <area coords="3" id="altxs.pdlpp.ppdef.gentype">
+	  <area coords="4" id="altxs.pdlpp.ppdef.code">
+	</areaspec>
+      <programlisting>
+pp_def( 'sum',
+        Pars => 'a(n); [o]b()',
+        GenericTypes => [L],
+        Code => '$b() = sum( $SIZE(n), $P(a));',
+);
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="altxs.pdlpp.ppdef.sum">
+	    <para>The first argument to <function>pp_def</function> is the
+name of the routine being generated.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.ppdef.pars">
+	    <para>This is the calling signature of the PDL routine. Here we
+	    are saying that the first argument is a one dimensional vector of
+	    dimension <literal>n</literal> with an output argument (that can
+	    also be a second input argument treated as a buffer) that is
+	    simple scalar PDL (there are no dimensions specified).</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.ppdef.gentype">
+	    <para>GenericTypes indicates to PP that only specific data types
+	    are supported by the routine. In this case only type <type>long
+	    int</type> is supported by our C function.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.ppdef.code">
+	    <para>This is the actual implementation of the PP
+	    routine. <function>$SIZE(n)</function> is used to retrieve the
+	    size of dimensions labelled
+	    <varname>n</varname>. <function>$P(a)</function> retrieves the
+	    pointer to the PDL named <varname>$a</varname>. These two
+	    arguments are passed to the C <function>sum</function> and the
+	    result is stored in the scalar variable named
+	    <varname>$b</varname>.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>This all looks fairly strange at first but there is some logic to
+      it all and it has successfully formed a layer between you and XS (the XS
+      file generated from this example PP file is 30kB!). This definition on
+      its own is useless so the next step is to convert the file to XS
+      code<footnote> <para>An <classname>Inline::PDLPP</classname> module is
+      under development at this time. This will allow PP definitions to be
+      placed in perl programs directly in the same way as described in <xref
+      linkend="altxs.inline"> for the C language.</para></footnote>.</para>
+
+    </sect2>
+
+    <sect2>
+      <title>The <filename>Makefile.PL</filename></title>
+
+      <para>Since we now have a file called <filename>sum.pd</filename> rather
+      than the file <filename>Sum.xs</filename> expected by
+      <classname>ExtUtils::MakeMaker</classname> we have to add some PDL
+      helper routines to the <filename>Makefile.PL</filename> to make sure
+      that the PP definition file is processed in order to generate a normal
+      XS file. We do this by adding a new makefile target and retrieving
+      PDL-specific build options from the module
+      <classname>PDL::Core::Dev</classname>:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="5" id="altxs.pdlpp.coredev">
+	  <area coords="7" id="altxs.pdlpp.pack">
+	  <area coords="8" id="altxs.pdlpp.stdargs">
+	  <area coords="12" id="altxs.pdlpp.mypostamble">
+	  <area coords="13" id="altxs.pdlpp.postamble">
+	</areaspec>
+	<programlisting>
+# Use this as a template for the Makefile.PL for
+# any external PDL module.
+
+use ExtUtils::MakeMaker;
+use PDL::Core::Dev qw/ pdlpp_stdargs pdlpp_postamble/;
+
+$pack = [qw/ sum.pd Sum PDL::Sum /];
+%hash = pdlpp_stdargs($pack);
+
+WriteMakefile(%hash);
+
+sub MY::postamble {
+        pdlpp_postamble($::pack);
+}  # Add genpp rule
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="altxs.pdlpp.coredev">
+	    <para>The <classname>PDL::Core::Dev</classname> module
+	    contains some helper routines designed specifically for
+	    generating makefiles for <classname>PDL::PP</classname>
+	    extensions.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.pack">
+	    <para><varname>$pack</varname> contains a reference to an
+	    array specifying the name of the source file, the name of
+	    the resulting module (<filename>.pm</filename> and
+	    <filename>.xs</filename>) files and the namespace of the
+	    module.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.stdargs">
+	    <para>The <function>pdlpp_stdargs</function> returns a
+	    hash containing the MakeMaker arguments required to build a
+	    <classname>PDL::PP</classname> based module.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.mypostamble">
+	    <para>The <methodname>postamble</methodname> method
+	    overrides the default version in the
+	    <classname>MY</classname> class (as setup by MakeMaker)
+	    and is invoked automatically by MakeMaker to place
+	    additional dependencies in the output
+	    <filename>Makefile</filename>. </para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.postamble">
+	    <para>The <function>pdlpp_postamble</function> function
+	    generates the PDL-specific makefile dependencies from the
+	    single argument. The argument is specified as
+	    <varname>$::pack</varname> to indicate that the variable
+	    from the main namespace and not from the
+	    <classname>MY</classname> namespace.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>Now if we attempt to build this module we get the following output
+      (on linux):</para>
+
+      <screen>
+<prompt>%</prompt> <userinput>perl Makefile.PL</userinput>
+Writing Makefile for PDL::Sum
+<prompt>%</prompt> <userinput>make</userinput>
+/local/bin/perl -I/usr/local/perl-5.6/lib/site_perl/5.6.0/i686-linux/blib/lib 
+   -I/usr/local/perl-5.6/lib/site_perl/5.6.0/i686-linux/blib/arch 
+   "-MPDL::PP qw/PDL::Sum PDL::Sum Sum/" sum.pd
+cp Sum.pm blib/lib/PDL/Sum.pm
+/local/bin/perl -I/usr/local/perl-5.6/lib/5.6.0/i686-linux 
+  -I/usr/local/perl-5.6/lib/5.6.0 
+   /usr/local/perl-5.6/lib/5.6.0/ExtUtils/xsubpp  
+    -typemap /usr/local/perl-5.6/lib/5.6.0/ExtUtils/typemap 
+     -typemap/usr/local/perl-5.6/lib/site_perl/5.6.0/i686-linux/PDL/
+Core/typemap.pdl 
+      Sum.xs > Sum.xsc && mv Sum.xsc Sum.c
+gcc -c -I/usr/local/perl-5.6/lib/site_perl/5.6.0/i686-linux/PDL/Core 
+   -fno-strict-aliasing -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -O2     
+   -DVERSION=\"0.10\" -DXS_VERSION=\"0.10\" -fpic 
+   -I/usr/local/perl-5.6/lib/5.6.0/i686-linux/CORE  Sum.c
+Running Mkbootstrap for PDL::Sum ()
+chmod 644 Sum.bs
+LD_RUN_PATH="" gcc -o blib/arch/auto/PDL/Sum/Sum.so  
+   -shared -L/usr/local/lib Sum.o     
+chmod 755 blib/arch/auto/PDL/Sum/Sum.so
+cp Sum.bs blib/arch/auto/PDL/Sum/Sum.bs
+chmod 644 blib/arch/auto/PDL/Sum/Sum.bs
+Manifying blib/man3/PDL::Sum.3
+</screen>
+
+      <para>The first step in the build is now to run the pd file through perl
+      before proceeding with a normal build (<command>xsubpp</command>
+      followed by the C compiler).</para>
+
+    </sect2>
+
+    <sect2>
+      <title>Pure PDL</title>
+
+      <para>Now that we have shown how to call an external library using
+      <classname>PDL::PP</classname> it may be instructive to show the
+      equivalent routine written using the PP language without referring to any
+      external C code:</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <area coords="4" id="altxs.pdlpp.sumover.tmp">
+	  <area coords="5" id="altxs.pdlpp.sumover.loop">
+	  <area coords="6" id="altxs.pdlpp.sumover.inc">
+	  <area coords="7" id="altxs.pdlpp.sumover.close">
+	  <area coords="8" id="altxs.pdlpp.sumover.assign">
+	</areaspec>
+	<programlisting>
+pp_def(
+       'sumover',
+       Pars => 'a(n); [o]b();',
+       Code => 'double tmp=0;
+               loop(n) %{ 
+                   tmp += $a(); 
+               %}
+               $b() = tmp;
+               '
+              );
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="altxs.pdlpp.sumover.tmp">
+	    <para>Initialise a new double precision variable.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.sumover.loop">
+	    <para>Loop over dimension <varname>n</varname> using the inbuilt
+	    <function>loop()</function> macro.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.sumover.inc">
+	    <para>Add the current value to the temporary placeholder. Note how
+	    no index is required. <classname>PDL::PP</classname> automatically
+	    works out what index you are referring to.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.sumover.close">
+	    <para>This is the special syntax for ending a loop.</para>
+	  </callout>
+	  <callout arearefs="altxs.pdlpp.sumover.assign">
+	    <para>Assign the total to the output variable.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+      <para>This code is still translated to C and built as an XS module but
+      now works on all data types natively. This is the recommended approach
+      to writing fast loops in PDL and is one of the resons that PDL can
+      approach the speed of pure C.</para>
+
+    </sect2>
+
+  </sect1>
+
+  <sect1>
+    <title>The Rest</title>
+
+  <para>The modules and packages described so far are by no means an
+  exhaustive list but do cover the techniques you would most likely want to
+  pursue. There are other, less portable, methods for calling functions in C
+  shared libraries from perl but with the appearance of the
+  <classname>Inline</classname> module most of these techniques can (and
+  probably should) be safely ignored. For example, the
+  <classname>C::DynaLib</classname> module can be used to call C functions
+  directly from shared libraries and did have a use for prototyping simple
+  systems without requiring XS. The following example (from the
+  <classname>C::DynaLib</classname> documentation) shows how to use it to
+  call a function from the standard math library:</para>
+
+    <programlisting>
+use C::DynaLib;
+$libm = new C::DynaLib("-lm");
+$sinh = $libm->DeclareSub("sinh", "d", "d");
+print "The hyperbolic sine of 3 is ", &$sinh(3), "\n";
+</programlisting>
+
+<para>and this does print the expected answer of 10.018 (on supported
+architectues). With <classname>Inline</classname> this would be written
+as</para>
+
+    <programlisting>
+use Inline "C";
+
+print "The hyperbolic sine of 3 is ", mysinh(3), "\n";
+
+__END__
+__C__
+double mysinh (double ang) { 
+    return sinh(ang); 
+}
+</programlisting>
+
+    <para>which has the two key advantages of being simpler to write<footnote>
+	<para>This can be written in 2 lines for those of you who prefer
+compactness:</para>
+	<programlisting>
+use Inline C => "double mysinh (double ang) { return sinh(ang); }";
+print "The hyperbolic sine of 3 is ", mysinh(3), "\n";
+</programlisting>
+      </footnote>
+ and more
+portable. The PDL equivalent of <classname>C::DynaLib</classname> is
+<classname>PDL::CallExt</classname> and this has also been superceded, this
+time by <classname>PDL::PP</classname>.</para>
+
+  </sect1>
+
+  <sect1>
+    <title>Further reading</title>
+
+    <variablelist>
+      <varlistentry>
+	<term>SWIG</term>
+	<listitem>
+	  <para><ulink url="http://www.swig.org">http://www.swig.org</ulink></para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>Inline</term>
+	<listitem>
+	  <para><ulink url="http://inline.perl.org">http://inline.perl.org</ulink></para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+  </sect1>
+
+</chapter>

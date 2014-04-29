@@ -1,0 +1,2257 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+<chapter id="perlvar">
+  <title>Perl's Variable Types</title>
+
+<para>
+Before we can delve deeper into the secrets of XS we need to find out
+how variables exist in Perl.  This chapter will explain how Perl
+variables (scalars, arrays, hashes and globs) are represented inside
+Perl. Starting from the various scalar types (<varname>$x</varname> in
+Perl) it will then continue to discuss magic (for example, ties), the
+more complex data types and the organisation of namespaces and lexical
+(<quote><type>my</type></quote>) variables.
+</para>
+
+<para>
+This will be the first detailed look inside Perl and will use
+knowledge of the types of variables used in C and how C data
+structures are implemented. This chapter assumes no more knowledge of C than
+that found in the previous chapters.
+</para>
+
+<sect1>
+<title>Scalar variables</title>
+
+<para>
+A Perl variable is much cleverer than a simple C variable. Perl knows
+how many characters the variable needs, how to convert it from a
+number to a string and how many other variables know about it (so that
+Perl can tidy up after itself). This is achieved by using a C data
+structure (a <type>struct</type>) rather than a simple variable or array.
+As explained in the previous chapter a C struct is a block of memory
+that can contain any number of variables of any type. Each entry in
+the struct can be accessed by name and is functionally equivalent to a
+simplified Perl hash.
+</para>
+
+<para>
+The simplest of all perl variable types is a scalar (e.g.
+<varname>$xyz</varname>) and this is represented inside Perl as a C
+structure of type <type>SV</type> (<type>SV</type> stands for
+<firstterm>Scalar Value</firstterm>)<footnote><para>inside Perl the
+<type>SV</type> type is a typedef (or alias) for a structure of type
+<type>sv</type> (a <type>struct sv</type>) defined in the
+<filename>sv.h</filename> include file.</para></footnote>.
+</para>
+
+<sect2>
+<title>SvNULL</title>
+
+<para>
+The basic implementation of an <type>SV</type> from which all perl
+variables are derived is the <type>SvNULL</type> structure:
+</para>
+      
+<remark>
+Would like to show these and similar diagrams in a more graphical way
+showing the data structure in a more approachable way. That is why I
+also give a "perl" equivalent. Would be annotated in the way indicated
+to show sv_any, sv_refcnt, sv_flags and explaining that a U32 is a int
+of at least 4 bytes
+</remark>
+
+<programlistingco>
+<areaspec>
+<area id="perlvar.name" coords="1" >
+<area id="perlvar.any" coords="2" >
+<areaset id="perlvar.u32" coords="">
+  <area id="perlvar.u32.c1" coords="3" >
+  <area id="perlvar.u32.c2" coords="4" >
+</areaset>
+</areaspec>
+<programlisting>
+struct sv {
+   void* sv_any;
+   U32   sv_refcnt;
+   U32   sv_flags;
+}
+</programlisting>
+<calloutlist>
+<callout arearefs="perlvar.name">
+<para>
+This creates a new structure named <varname>sv</varname>
+</para>
+</callout>
+<callout arearefs="perlvar.any">
+<para>
+This is simply a pointer of any allowed type.
+</para>
+</callout>
+
+<callout arearefs="perlvar.u32">
+<para>
+This is an unsigned integer that must be at least 4 bytes (32 bits) long.
+</para>
+</callout>
+
+</calloutlist>
+</programlistingco>
+
+<para>
+Using perl hash syntax this would become:
+</para>
+
+<programlisting>
+$sv = {
+        sv_any => undef,
+        sv_refcnt => 1,
+        sv_flags  => 0
+      };
+</programlisting>
+
+<para>
+The actual fields (<varname>sv_any</varname>,
+<varname>sv_refcnt</varname> and <varname>sv_flags</varname>) can be
+accessed using C macros (defined in the <filename>sv.h</filename>
+include file) <function>SvANY</function>,
+<function>SvREFCNT</function> and <function>SvFLAGS</function> (these
+also match the output provided by the
+<classname>Devel::Peek</classname> module described later).  From now
+on, the structure fields will be named after the macro name (without
+the leading <type>Sv</type> string) rather than the actual name used to
+define the structure since all programs written using the internals go
+through the provided macros rather than directly to the structure.
+</para>
+
+<para>
+The <varname>ANY</varname> field is used to point to an additional
+structure that contains the specific state of the variable and can be
+changed depending on whether an integer (<type>IV</type>), double
+precision floating point number (<type>NV</type>) or character string
+(<type>PV</type>; standing for pointer value rather than
+<emphasis>string value</emphasis> since <type>SV</type> is already
+taken and a string in C is defined by using a pointer to the memory
+location of the first character). Variables are implemented in this
+way so that the basic structure of the variable is well defined such
+that all Perl variables, however complex the implementation, still
+have the same toplevel organization.  Whenever it is necessary to
+store new information in the <type>SV</type> the structure pointed to
+by the <varname>ANY</varname> field is changed to accomodate the new
+data (it is <emphasis>upgraded</emphasis> to the new form).  It is not
+possible to <emphasis>downgrade</emphasis> an <type>SV</type> to a
+type containing less information since that would throw information
+away. The different types are discussed later on in this chapter.
+</para>
+
+<para>
+For an <type>SvNULL</type> structure the <varname>ANY</varname> field
+does not point to anything (it contains a <literal>NULL</literal>
+pointer)<footnote><para><type>NULL</type> is the C equivalent of
+<function>undef</function></para></footnote> so this structure represents a
+scalar with a value of <function>undef</function>.
+</para>
+
+<para>
+The <varname>REFCNT</varname> field contains the current reference
+count for the variable. Perl decides whether the memory associated
+with a variable can be recycled on the basis of reference
+counting. When a variable is created it has a reference count of
+1. Whenever a reference of that variable is stored somewhere the
+reference count is increased by 1 and whenever a reference is no
+longer required the reference count is decreased by 1. If the
+reference count goes to zero the variable can no longer be used by
+Perl and the memory associated with it is freed.
+</para>
+
+<para>
+The <varname>FLAGS</varname> field contains bit flags that can be used to
+determine the behaviour of certain fields and the current state of the 
+variable (for example, whether the variable is a package variable or a lexical
+variable).
+</para>
+
+</sect2>
+
+<sect2>
+<title>Looking inside - <classname>Devel::Peek</classname></title>
+
+<para>
+When you are developing Perl extensions (or are simply interested in
+what is happening to a variable) it is very useful to be able to
+examine the internal structure of a Perl variable from a Perl
+program. The <classname>Devel::Peek</classname> module is available as
+part of the standard perl distribution and provides the functionality
+for doing just that. It can be used to list the current state of a
+variable in detail.
+</para>
+
+<para>
+In the following example, the Perl code is on the left and the
+corresponding output from each line is on the right:
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="3" id="devel-peek.1.1">
+        <area coords="4" id="devel-peek.1.2">
+        <area coords="5" id="devel-peek.1.3">
+        <area coords="9" id="devel-peek.1.4">
+        <area coords="12" id="devel-peek.1.5">
+	</areaspec>
+<programlisting>
+  use Devel::Peek;                                     
+  $a = undef;            
+  Dump $a;                      SV = NULL(0x0) at 0x80f9bf0 
+                                  REFCNT = 1
+                                  FLAGS = ()
+
+  $b = \$a;
+  Dump $a;                      SV = NULL(0x0) at 0x80f9bf0 
+                                  REFCNT = 2
+                                  FLAGS = ()
+
+  print $b;                     SCALAR(0x80f9bf0)
+
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="devel-peek.1.1">
+	    <para>
+<classname>Devel::Peek</classname> shows us that we have an SVNULL
+structure, and it tells us the memory address of that structure -
+<literal>0x80f9bf0</literal> in this particular instance; expect your
+output to show a different location. The address in brackets
+(<literal>0x0</literal>) tells us where the <varname>ANY</varname>
+field in the SV's structure is pointing - in the case of an SVNULL,
+this is zero, but in more complicated SVs, it will point to another
+structure in memory.
+</para>
+	  </callout>
+	  <callout arearefs="devel-peek.1.2">
+	    <para>
+Initially, we have one reference to the <type>SV</type>.
+</para>
+	  </callout>
+	  <callout arearefs="devel-peek.1.3">
+	    <para>
+The SV's flags are empty.
+</para>
+	  </callout>
+	  <callout arearefs="devel-peek.1.4">
+	    <para>
+When we create a new reference to the <type>SV</type>, its reference
+count increases by one.
+</para>
+	  </callout>
+
+<callout arearefs="devel-peek.1.5">
+<para>When the reference is printed (the contents of
+<varname>$b</varname>) note that the stringified reference that Perl
+generates includes the memory address.
+</para>
+</callout>
+	</calloutlist>
+      </programlistingco>
+</sect2>
+
+<sect2>
+<title>Flags</title>
+
+<para>
+Much of the state information for an <type>SV</type> is contained in
+the <varname>FLAGS</varname> field and before proceeding further with
+the more complex <type>SV</type> structures we will explain how the
+flag system works. All computer data are stored in terms of binary
+digits (bits). A particular bit can either be set (a value of
+<literal>1</literal>) or unset (<literal>0</literal>) and the state of
+a bit can be checked by comparing it with a bit mask using binary
+logic (a bitwise <function>AND</function> can be used to determine if
+a bit is set, a bitwise <function>OR</function> can be used to set a
+bit). The following example uses a 4-bit number and compares it with a
+bitmask to determine whether the specific flag is set (that is, both
+the bit in the number to be checked and the bit in the bitmask are
+set):
+</para>
+
+<screen>
+               Binary     Decimal
+Bit number     3 2 1 0
+               
+FLAG           0 1 1 0      6
+BITMASK        0 0 1 0      2
+               -------
+AND            0 0 1 0      2
+</screen>
+
+<para>
+Here the flag has a decimal value of 6 (<literal>0b0110</literal> in
+binary) and when a bitwise <function>AND</function> operation is
+performed with the bit mask the result is non-zero and indicates that
+the bit that is set in the bit mask is also set in the flag. If the
+result of the operation was zero it would mean that the flag was not
+set. In the above example 4 independent states can be stored since we
+are using a 4 bit number. In \perl\ the <varname>FLAGS</varname> field
+is implemented using a 32-bit integer and so it is possible to record
+32 different states. The actual size of the flag variable or the bit
+number associated with each of the states is completely irrelevant as
+those values are set internally in the C include values. All that
+really matters is that Perl provides C routines that can be used to
+query an <type>SV</type> for a particular state.  For example, in
+order to see whether an <type>SV</type> is readonly the
+<function>SvREADONLY</function> macro can be used:
+</para>
+
+<programlisting>
+  if ( SvREADONLY( sv ) ) 
+      printf "SV is readonly\n";
+</programlisting>
+
+<para>
+The following example shows how a Perl implementation of the READONLY
+flag used above could look. This Perl implementation is very similar
+to that found in the perl C include files:
+</para>
+
+<programlisting>
+use 5.006;  # binary 0b0010 notation needs perl 5.6
+use constant SVf_READONLY => 0b0010; # Set the mask bit
+
+sub SvREADONLY { $_[0] & SVf_READONLY } # Test the mask bit
+sub SvREADONLY_on( $_[0] |= SVf_READONLY } # Set the READONLY bit
+sub SvREADONLY_off( $_[0] &= ~SVf_READONLY } # Unset READONLY bit
+
+# Set the flag
+$flag = 0;
+SvREADONLY_on( $flag );
+
+# Test for the flag
+print "Flag is readonly\n" if SvREADONLY( $flag );
+</programlisting>
+
+<para>
+The important point is that in the above example the programmer only
+ever uses the <function>SvREADONLY</function> subroutines and never
+needs to use the <varname>SVf_READONLY</varname> value directly (or even care
+what its value is).
+</para>
+
+<para>
+When the <classname>Devel::Peek</classname> module is used it lists
+all the flags that are currently set in the variable:
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -MDevel::Peek -e 'Dump( my $a )'</userinput>
+<computeroutput>
+SV = NULL(0x0) at 0x80e58c8
+  REFCNT = 1
+  FLAGS = (PADBUSY,PADMY)
+</computeroutput>
+</screen>
+
+<para>
+Here the PADMY flag is set indicating that <varname>$a</varname> is a
+lexical variable (The PADBUSY flag is set for the same reason; see
+<xref linkend="perlvar.my">). The important flags will be discussed in this
+chapter as the relevant variable types are discussed.
+</para>
+
+</sect2>
+
+<sect2>
+<title>SvRV - references</title>
+
+<para>
+The simplest possible perl variable that actually contains data is the
+<type>SvRV</type> subtype and it is used to contain references to
+other <type>SV</type>'s. An <type>SvRV</type> is simply an
+<type>SV</type> where the <varname>ANY</varname> field points to a
+simple structure (named <varname>xrv</varname>) that contains a single field
+that is a pointer to another <type>SV</type> (an <type>SV*</type>):
+</para>
+
+<programlisting>
+struct xrv {
+    SV *        xrv_rv;         /* pointer to another SV */
+};
+</programlisting>
+
+<para>
+Represented as a perl structure <userinput>$b=\$a</userinput> would be
+</para>
+
+<programlisting>
+  $b = {                             
+          ANY    => { RV => \$a },
+          REFCNT => 1,
+          FLAGS  => ROK
+       }
+</programlisting>
+
+<para>
+or using <classname>Devel::Peek</classname>:
+</para>
+
+      <screenco>
+	<areaspec>
+	  <area coords="1" id="rv.1">
+	  <area coords="2" id="rv.2">
+	  <area coords="3" id="rv.3">
+	  <area coords="5" id="rv.4">
+	  <area coords="6" id="rv.5">
+
+	</areaspec>
+<screen>
+SV = RV(0x80fbabc) at 0x80f9c3c
+  REFCNT = 1                   
+  FLAGS = (ROK)                
+  RV = 0x80ef888
+  SV = NULL(0x0) at 0x80ef888  
+    REFCNT = 2                 
+    FLAGS = ()                 
+</screen>
+	<calloutlist>
+	  <callout arearefs="rv.1">
+
+	    <para>This <type>SV</type> is of type <type>SvRV</type></para>
+	  </callout>
+	  <callout arearefs="rv.2">
+	    <para>
+This reference has a ref count of 1 - that is, <varname>$b</varname>
+</para>
+	  </callout>
+	  <callout arearefs="rv.3">
+	    <para>
+The ROK flag (<emphasis>Reference OK</emphasis>) bit is set to true to
+indicate that the reference is valid (if ROK is false the
+variable contains the undefined value).
+</para>
+	  </callout>
+	  <callout arearefs="rv.4">
+	    <para>
+This line tells us about the SV that is being referred to, the SV
+stored in <varname>$a</varname>.
+</para>
+	  </callout>
+	  <callout arearefs="rv.5">
+	    <para>
+We see that this <type>SV</type> has two references: the value itself,
+in <varname>$a</varname>, and the reference to it, in <varname>$b</varname>.
+</para>
+	  </callout>
+	</calloutlist>
+      </screenco>
+
+</sect2>
+
+
+<sect2>
+<title>SvPV - string values</title>
+
+<para>
+Perl variables that contain just a string representation are type
+<type>SvPV</type> (they simply contain a PV).  They are represented by
+a <type>SV</type> with the <varname>ANY</varname> field pointing to a
+structure that contains a pointer to a string (a <type>char *</type>
+that is named <varname>PVX</varname>) and two length fields (the
+<varname>CUR</varname> and <varname>LEN</varname>
+fields).<footnote><para>the actual name of the <type>SvPV</type>
+struct in the Perl include files is <type>xpv</type> (similarly an
+<type>SvPVIV</type> uses a struct named <type>xpviv</type>).  For the
+rest of this chapter the struct name will not be explcitly
+stated.</para></footnote>
+</para>
+
+<screen>
+     ANY  =>  PVX  =>        hello world\0
+              CUR  =>        <--------->
+              LEN  =>        <----------->
+     REFCNT
+     FLAGS => POK | pPOK    <--- POINTER OK flag
+</screen>
+
+<para>
+The <varname>PVX</varname> field contains a pointer to the start of
+the string representation of the <type>SV</type>. The
+<varname>CUR</varname> field is an integer containing the length of
+the perl string and the <varname>LEN</varname> field is an integer
+containing the actual number of bytes allocated to the string.
+Additionally, the byte at position <userinput>(PVX + CUR)</userinput>
+must be a <quote>\0</quote> (C uses a <type>NUL</type> byte to indicate
+the end of a string) so that other C functions that receive this
+string will handle it correctly. This means that
+<varname>LEN</varname> must be at least 1 more than the value of
+<varname>CUR</varname>. Perl's memory management is such that for
+efficiency it will not deallocate memory for the string once it has
+been allocated if the string is made smaller. It is much more
+efficient simply to change the value of <varname>CUR</varname> than it
+is to free the unused memory when a string becomes shorter.
+</para>
+
+<programlisting>
+  use Devel::Peek;
+
+  $a = "hello world";
+  Dump $a;                SV = PV(0x80e5b04) at 0x80f9d98  
+                            REFCNT = 1                     
+                            FLAGS = (POK,pPOK)             
+                            PV = 0x80e9660 "hello world"\0 
+                            CUR = 11                       
+                            LEN = 12
+
+  $a = "hello";           SV = PV(0x80e5b04) at 0x80f9d98  
+  Dump $a;                  REFCNT = 1                     
+                            FLAGS = (POK,pPOK)             
+                            PV = 0x80e9660 "hello"\0       
+                            CUR = 5                        
+                            LEN = 12
+</programlisting>
+
+<para>
+The POK flag indicates that the <type>PV</type> stored in the variable
+is valid and can be used. The pPOK flag is related to this but is an
+internal flag to indicate to the Magic system (see
+<xref linkend="perlvar.magic" >) that the PV is valid.
+</para>
+
+</sect2>
+
+<sect2>
+<title>SvPVIV - integers</title>
+
+<para>
+In C, it is not possible to store a number or a string in a variable
+interchangably. Perl overcomes this restriction by using a data
+structure that contains both a string part and an integer part, using
+the flags to indicate which part of the structure contains valid data.
+The name <type>SvPVIV</type> indicates that the structure contains a
+string (PV) and an integer (IV) and is simply an <type>SvPV</type>
+with an extra integer field.
+</para>
+
+<programlisting>
+    ANY   => { PVX  =>  ''
+               CUR  =>  0,
+               LEN  =>  0,
+               IVX  =>  52,
+             }
+    FLAGS => IOK | pIOK | IsUV   <--- Integer OK and is an unsigned value
+</programlisting>
+
+<para>
+This structure introduces three flags. The IOK and pIOK flags indicate
+that the <varname>IVX</varname> field is valid (in the same way that
+POK and pPOK indicate that the string part is valid) and the IsUV flag
+indicates that the integer part is unsigned (a UV) rather than signed
+(an IV).  This is useful in cases where a large positive integer is
+required (such as inside loops) since a UV has twice the positive
+range of a signed integer and is the default state when a new variable
+is created that contains a positive integer.
+</para>
+
+<para>
+When a string value is requested (using the <function>SvPV</function>
+function) the integer is converted to a string representation and
+stored in the <varname>PVX</varname> field and the POK and pPOK flags
+are set to true to prevent the conversion happening every time a string
+is requested.
+</para>
+
+      <programlistingco>
+	<areaspec>
+	  <!-- one of (AREASET AREA) -->
+	  <areaset coords="6" id="perlvar.1">
+	    <area coords="6" id="perlvar.1.flags">
+	    <area coords="7" id="perlvar.1.uv">
+	  </areaset>
+	  <areaset coords="12" id="perlvar.2">
+	    <area coords="12" id="perlvar.2.flags">
+	    <area coords="14" id="perlvar.2.pv">
+	  </areaset>
+	  <areaset coords="20" id="perlvar.3">
+	    <area coords="20" id="perlvar.3.uvflags">
+	    <area coords="21" id="perlvar.3.iv">
+	    <area coords="22" id="perlvar.3.pv">
+	  </areaset>
+	</areaspec>
+<programlisting>
+ use Devel::Peek;
+
+ $a = 5;
+ Dump $a;                        SV = IV(0x80f0b28) at 0x80f9d0c
+                                   REFCNT = 1
+                                   FLAGS = (IOK,pIOK,IsUV)
+                                   UV = 5
+ # string comparison
+ print "yes" if $a eq "hello";
+ Dump $a;                        SV = PVIV(0x80e5f50) at 0x80f9d0c
+                                   REFCNT = 1
+                                   FLAGS = (IOK,POK,pIOK,pPOK,IsUV)
+                                   UV = 5
+                                   PV = 0x80e9660 "5"\0
+                                   CUR = 1
+ # Copy in a new string            LEN = 2
+ $a = "hello";
+ Dump $a;                        SV = PVIV(0x80e5f50) at 0x80f9d0c
+                                   REFCNT = 1
+                                   FLAGS = (POK,pPOK)
+                                   IV = 5
+                                   PV = 0x80e9660 "hello"\0
+                                   CUR = 5
+                                   LEN = 6
+</programlisting>
+	<calloutlist>
+	  <callout arearefs="perlvar.1">
+	    <para>Initially the SV simply contains a UV and a flag
+	    indicating that the integer part of the SV is okay.</para>
+	  </callout>
+	  <callout arearefs="perlvar.2">
+	    <para>The string comparison forces the SV to be
+	    stringified. This results in an upgrade to a PVIV, the POK
+	    flag is set to true in addition to the IOK flag and a
+	    string representation of the number stored in the PV slot.</para>
+	  </callout>
+	  <callout arearefs="perlvar.3">
+	    <para>The string part is modified so the integer part is
+	    now invalid. The IOK flag is unset but the IV retains its
+	    value.</para>
+	  </callout>
+	</calloutlist>
+      </programlistingco>
+
+
+</sect2>
+
+<sect2>
+<title>SvPVNV - floating point numbers</title>
+
+<para>
+For the same reason that a C variable can not contain a string and an
+integer, it can not contain a floating point value either. This is
+overcome simply by adding a floating point field to an <type>SvPVIV</type>.
+</para>
+
+<programlisting>
+    ANY   => { PVX  =>  ''
+               CUR  =>  0,
+               LEN  =>  0,
+               IVX  =>  0,
+               NVX  =>  54.5e20
+             }
+    FLAGS => NOK | pNOK       <----- Number OK
+</programlisting>
+
+<para>
+As for the other types, previous settings for the string and integer
+parts are retained as the variable evolves, even if they are no longer valid.
+</para>
+
+<programlisting>
+ use Devel::Peek;
+ $a = "hello world";
+ $a = 5;
+ $a += 0.5;
+ Dump $a;
+</programlisting>
+
+<para>
+gives:
+</para>
+
+<screen>
+<computeroutput>
+ SV = PVNV(0x80e65c0) at 0x80f9c00
+  REFCNT = 1
+  FLAGS = (NOK,pNOK)
+  IV = 5
+  NV = 5.5
+  PV = 0x80e9660 "hello world"\0
+  CUR = 11
+  LEN = 12
+</computeroutput>
+</screen>
+
+<para>
+where the IV and PV parts retain their old values but the NV part is
+the only value that is currently valid (as shown by the flags).
+</para>
+
+</sect2>
+
+<sect2 id="ook">
+<title>SvOOK - offset strings</title>
+
+<para>
+In order to improve the speed of character removal from the front of a
+string, a special flag is provided (OOK - Offset OK) that allows the
+IVX part of the SV to be used to represent an offset in the string
+rather than being an integer representation of the string.
+</para>
+
+<programlisting>
+   ANY =>   PVX =&gt;  ..llo world\0
+            CUR =&gt;    &lt;-------&gt;
+            LEN =&gt;    &lt;---------&gt;
+            IVX =&gt;  &lt;&gt;
+   FLAGS => POK | pPOK | OOK  &lt;---- Pointer OK and Offset OK
+</programlisting>
+
+<para>
+It is not possible for the IOK flag and the OOK flags to be set at the 
+same time as the IVX can not be both an offset and a valid number.
+</para>
+
+<para>The use of this flag  is best demonstrated by example:</para>
+
+      <example>
+	<title>SvOOK example</title>
+	<screenco>
+
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="4" id="perlvar.ook.eg.aflags">
+	    <area coords="5" id="perlvar.ook.eg.apv">
+	    <areaset coords="" id="perlvar.ook.eg.acurlen">
+	      <area coords="6" id="perlvar.ook.eg.acur">
+	      <area coords="7" id="perlvar.ook.eg.alen">
+	    </areaset>
+	    <area coords="10" id="perlvar.ook.eg.flags">
+	    <area coords="11" id="perlvar.ook.eg.iv">
+	    <area coords="12" id="perlvar.ook.eg.pv">
+	    <areaset coords="" id="perlvar.ook.eg.curlen">
+	      <area coords="13" id="perlvar.ook.eg.cur">
+	      <area coords="14" id="perlvar.ook.eg.len">
+	    </areaset>
+	  </areaspec>
+<screen>
+<prompt>%</prompt> <userinput>perl -MDevel::Peek -e '$a="Hello world"; Dump($a); $a=~s/..//; Dump($a)'</userinput>
+SV = PV(0x80f89ac) at 0x8109b94
+  REFCNT = 1
+  FLAGS = (POK,pPOK)
+  PV = 0x8109f88 "Hello world"\0
+  CUR = 11
+  LEN = 12
+SV = PVIV(0x80f8df8) at 0x8109b94
+  REFCNT = 1
+  FLAGS = (POK,OOK,pPOK)
+  IV = 2  (OFFSET)
+  PV = 0x8109f8a ( "He" . ) "llo world"\0
+  CUR = 9
+  LEN = 10
+          </screen>
+	</screenco>
+	<calloutlist>
+	  <callout arearefs="perlvar.ook.eg.aflags">
+	    <para>Standard flags for a PV</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.apv">
+	    <para>The string stored in the PV</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.acurlen">
+	    <para>The length of the string and the size of the buffer
+allocated for storage.</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.flags">
+	    <para>After processing the PV now has an additional flag
+(OOK) indicating that offsetting is in effect.</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.iv">
+	    <para>This indiciates the real <quote>start</quote> of the
+string. <classname>Devel::Peek</classname> indicates that this is an offset.</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.pv">
+	    <para>This shows the string split into two parts: the
+piece that is ignored at the start and the current value.</para>
+	  </callout>
+	  <callout arearefs="perlvar.ook.eg.curlen">
+	    <para>The length information is now relative to the offset
+</para>
+	  </callout>
+	</calloutlist>
+      </example>
+
+
+
+</sect2>
+
+</sect1>
+
+<sect1 id="perlvar.magic">
+<title>Magic Variables - SvPVMG</title>
+
+<para>
+In Perl a magic variable is one in which extra functions are invoked
+when the variable is accessed rather than simply retrieving the PV, IV
+or NV part of the SV. Examples are tied variables where the
+<function>FETCH</function> and <function>STORE</function> routines
+(plus others) are supplied by the programmer, the
+<varname>%SIG</varname> hash where a signal handler is set on
+assignment or the <varname>$!</varname> variable where the C level
+<varname>errno</varname> variable is read directly. Additionally,
+objects make use of magic when they are blessed into a class.
+</para>
+
+<screen>
+   ANY =>  PVX
+           CUR
+           LEN
+           IVX
+           NVX
+           MAGIC => { # MAGIC
+                      moremagic => magic
+                      virtual    => virtual table of functions
+                      private
+                      type
+                      flags
+                      obj
+                      ptr
+                      len 
+                    }
+           STASH => { Foo::Bar => {} }
+</screen>
+
+<para>
+An <type>SvPVMG</type> magic variables is just like an
+<type>SvPVNV</type> variable except that two extra fields are present
+(the structure attached to the <varname>ANY</varname> field is of type
+<type>xpvmg</type>).  The <varname>MAGIC</varname> field points to an
+additional structure of type <type>magic</type> and the
+<varname>STASH</varname> field points to a
+namespace symbol table relating to the object (stashes are described
+later in <xref linkend="perlvar.stashes">). When the <varname>STASH</varname>
+field is set (that is, the SV is blessed into a class) the OBJECT flag
+is set.
+</para>
+
+<programlisting>
+  use Devel::Peek;
+  $a="bar";
+  $obj = bless( \$a, "Foo::Bar");
+  Dump $obj;
+</programlisting>
+<screen>
+ SV = RV(0x80fb704) at 0x80f9d44
+   REFCNT = 1
+   FLAGS = (ROK)
+   RV = 0x80f9d98
+   SV = PVMG(0x8102450) at 0x80f9d98
+     REFCNT = 2
+     FLAGS = (OBJECT,POK,pPOK)
+     IV = 0
+     NV = 0
+     PV = 0x80e9660 "bar"\0
+     CUR = 3
+     LEN = 4
+     STASH = 0x80f9ce4   "Foo::Bar"
+</screen>
+
+<para>
+The important entries in the magic structure (defined in
+<filename>mg.h</filename>) are the following:
+</para>
+
+<variablelist>
+
+<varlistentry>
+<term>moremagic</term>
+
+<listitem>
+<para>
+This is simply a pointer to a linked list of additional MAGIC
+structures. Multiple MAGIC can be associated with each variable.
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>virtual</term>
+<listitem>
+<para>
+This is a pointer to an array of functions. Functions can be present
+for retrieving the value (<quote><function>get</function></quote>),
+setting the value (<quote><function>set</function></quote>), determining
+the length of the value (<quote><function>len</function></quote>),
+clearing the variable (<quote><function>clear</function></quote>) and
+freeing the memory associated with the variable
+(<quote><function>free</function></quote>). In perl this is equivalent to
+</para>
+<programlisting>
+  $virtual = {
+        "get" => \&amp;get, 
+        "set" => \&amp;set, 
+        "len" => \&amp;len,
+        "clear" => \&amp;clear, 
+        "free" => \&amp;free
+        };
+</programlisting>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>obj</term>
+<listitem>
+<para>
+This is some data that can contain a pointer to anything
+that is important for the type of magic being implemented. For a tie
+this will be an SV of the tied object.
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>type</term>
+<listitem>
+<para>
+This is a single character denoting the type of magic implemented.
+A value of `P' indicates that the magic is a tied array or hash 
+and `q' indicates a tied scalar or filehandle. A value of `~' or `U' 
+indicates that the functions in the virtual table have been supplied
+by the programmer. An extensive list of the different types can
+be found in the <filename>perlguts</filename> documentation.
+</para>
+</listitem>
+</varlistentry>
+</variablelist>
+
+<para>
+At least one of the MAGIC flags will be set. The important flags are
+GMAGICAL (the SV contains a magic <methodname>get</methodname> or
+<methodname>len</methodname> method), SMAGICAL (the SV contains a
+magic <methodname>set</methodname> method) or RMAGICAL (the SV
+contains some other form of <emphasis>random</emphasis> magic).
+</para>
+
+<para>We can investigate the properties of magic by seeing what
+happens when we tie a class to a perl variable. The following class
+can be used to tie a scalar such that the contents of the blessed
+variable increments each time its value is retrieved:</para>
+
+    <programlistingco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="1" id="var.tie.foo">
+	<area coords="3" id="var.tie.tiescalar">
+	<area coords="4" id="var.tie.foo1">
+	<area coords="5" id="var.tie.bless">
+	<area coords="7" id="var.tie.fetch">
+	<area coords="8" id="var.tie.incr">
+	<area coords="10" id="var.tie.one">
+      </areaspec>
+    <programlisting>
+package Tie::Foo;
+
+sub TIESCALAR { 
+  my $obj="foo1"; 
+  return bless(\$obj,"Tie::Foo"); 
+}
+
+sub FETCH { 
+  ${ $_[0] }++;
+}
+
+1;
+</programlisting>
+      <calloutlist>
+	<callout arearefs="var.tie.foo">
+	  <para>Declare the name of the current package.</para>
+	</callout>
+	<callout arearefs="var.tie.tiescalar">
+	  <para>This is a special method name reserved by the tie
+	  system. It is invoked automatically whenever someone tries
+	  to tie a scalar variable to this class.</para>
+	</callout>
+	<callout arearefs="var.tie.foo1">
+	  <para>Create a variable to act as the object and initialise
+	  it with a value. It must be a lexical to allow other,
+	  independent, variables to be tied.</para>
+	</callout>
+	<callout arearefs="var.tie.bless">
+	  <para>Bless the reference to the scalar variable into the
+	  <classname>Tie::Foo</classname> class.</para>
+	</callout>
+	<callout arearefs="var.tie.fetch">
+	  <para>This is a special method name reserved by the tie
+	  system. Perl invokes this method on the object each time the
+	  value is required.</para>
+	</callout>
+	<callout arearefs="var.tie.incr">
+	  <para>Return the current value of the object and store the
+	  next value in the object. This guarantees that the value
+	  first stored in the object (by the constructor) is the first
+	  value retrieved.</para>
+	</callout>
+	<callout arearefs="var.tie.one">
+	  <para>If this is a standalone module (as opposed to being
+	  some code at the end of a program) we need to return true to
+	  indicate to perl that the module has been read
+	  successfully.</para>
+	</callout>
+      </calloutlist>
+    </programlistingco>
+
+    <para>If we now use this class we can dump the contents of the
+    tied variable and see how it is organized and how it changes as
+    the tie is used. This code ties a variable to class
+    <classname>Tie::Foo</classname> and dumps the results:</para>
+
+<programlisting>
+use Devel::Peek;
+use Tie::Foo;
+tie $a, 'Tie::Foo';
+
+print "Initial state:\n";
+Dump $a;
+
+print "\nFirst value: $a\n\n";
+print "State after a FETCH:\n";
+Dump $a;
+</programlisting>
+
+    <para>This is the output:</para>
+
+    <screenco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="2" id="var.magic.dump.pvmg">
+	<area coords="10" id="var.magic.dump.type">
+	<area coords="14" id="var.magic.dump.svrv">
+	<area coords="18" id="var.magic.dump.scalar">
+	<area coords="20" id="var.magic.dump.flags">
+	<area coords="26" id="var.magic.dump.stash">
+	<area coords="28" id="var.magic.dump.firstval">
+	<area coords="33" id="var.magic.dump.flags2">
+	<area coords="36" id="var.magic.dump.pv">
+	<area coords="54" id="var.magic.dump.pv2">
+      </areaspec>
+<screen>
+Initial state:
+SV = PVMG(0x81171f8) at 0x8107b14
+  REFCNT = 1
+  FLAGS = (GMG,SMG,RMG)
+  IV = 0
+  NV = 0
+  PV = 0
+  MAGIC = 0x81000b8
+    MG_VIRTUAL = &amp;PL_vtbl_packelem
+    MG_TYPE = 'q'
+    MG_FLAGS = 0x02
+      REFCOUNTED
+    MG_OBJ = 0x80f8ae0
+    SV = RV(0x810f220) at 0x80f8ae0
+      REFCNT = 1
+      FLAGS = (ROK)
+      RV = 0x81197b4
+      SV = PVMG(0x81171d8) at 0x81197b4
+        REFCNT = 1
+        FLAGS = (PADBUSY,PADMY,OBJECT,POK,pPOK)
+        IV = 0
+        NV = 0
+        PV = 0x8107820 "foo1"\0
+        CUR = 4
+        LEN = 5
+        STASH = 0x811976c	"Tie::Foo"
+
+First value: foo1
+
+State after a FETCH:
+SV = PVMG(0x81171f8) at 0x8107b14
+  REFCNT = 1
+  FLAGS = (GMG,SMG,RMG,pPOK)
+  IV = 0
+  NV = 0
+  PV = 0x81000f8 "foo1"\0
+  CUR = 4
+  LEN = 5
+  MAGIC = 0x81000b8
+    MG_VIRTUAL = &amp;PL_vtbl_packelem
+    MG_TYPE = 'q'
+    MG_FLAGS = 0x02
+      REFCOUNTED
+    MG_OBJ = 0x80f8ae0
+    SV = RV(0x810f220) at 0x80f8ae0
+      REFCNT = 1
+      FLAGS = (ROK)
+      RV = 0x81197b4
+      SV = PVMG(0x81171d8) at 0x81197b4
+        REFCNT = 1
+        FLAGS = (PADBUSY,PADMY,OBJECT,POK,pPOK)
+        IV = 0
+        NV = 0
+        PV = 0x8107820 "foo2"\0
+        CUR = 4
+        LEN = 5
+        STASH = 0x811976c	"Tie::Foo"
+</screen>
+      <calloutlist>
+	<callout arearefs="var.magic.dump.pvmg">
+	  <para>The SV is of type <type>SVMG</type> as expected.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.type">
+	  <para>The magic type is <quote><literal>q</literal></quote>
+	  to indicate that we have a tied scalar.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.svrv">
+	  <para>This is the reference to the scalar that is being used
+	  as the object.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.scalar">
+	  <para>This is the actual scalar
+	  (i.e. <varname>$obj</varname>).</para>
+	</callout>
+	<callout arearefs="var.magic.dump.flags">
+	  <para>The flags indicate that this is a lexical variable
+	  that is being used as an object and that contains a valid
+	  string.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.stash">
+	  <para>The symbol table associated with this object.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.firstval">
+	  <para>The first value retrieved from <varname>$a</varname>
+	  is the initial value stored by the object
+	  constructor.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.flags2">
+	  <para>In addition to the flags indicating magic, the
+	  <type>pPOK</type> flag is now set to indicate that a cached
+	  value is available (even though it will be overwritten each
+	  time the <methodname>FETCH</methodname> is invoked.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.pv">
+	  <para>This is the current value for the tied variable.</para>
+	</callout>
+	<callout arearefs="var.magic.dump.pv2">
+	  <para>This is the current value of the string stored in the
+	  object itself.</para>
+	</callout>
+      </calloutlist>
+    </screenco>
+
+</sect1>
+
+<sect1 id="perlvar.arrays">
+<title>Array Variables</title>
+
+<para>
+A Perl array is an array of scalar variables and at the C level an
+Array Value (AV) is fundamentally an array of SV's.  An AV is
+implemented by using a structure that is the same as that used for a
+<type>SvPVMG</type> (defined in <filename>av.h</filename> as type
+<type>xpvav</type>) except that three additional fields are present:
+</para>
+
+    <variablelist>
+      <varlistentry>
+	<term>ALLOC</term>
+	<listitem>
+	  <para>
+points to an array of SV's (in fact since this is C it points to
+an array of pointers to SV structures [an <type>SV**</type>]), 
+</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>ARYLEN</term>
+	<listitem>
+	<para>
+	  points to a magic SV that is responsible for dealing with the
+	  <varname>$#array</varname> Perl construct
+        </para>
+	</listitem>
+
+      </varlistentry>
+      <varlistentry>
+	<term>Flag</term>
+	<listitem>
+	  <para>
+	  an extra array flag variable controlling whether the elements should
+	  have their reference counter decremented when the variable is removed
+	  from the array (this is normally true but the <varname>@_</varname>
+	  array is an example where this does not happen for example).
+</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+<para>
+Also, the first three fields of the structure now have different names 
+with <varname>PVX</varname> becoming <varname>ARRAY</varname>,
+<varname>CUR</varname> becoming <varname>FILL</varname> and
+<varname>LEN</varname> becoming <varname>MAX</varname>.
+</para>
+
+<screen>
+  ANY => ARRAY          position of first element
+         FILL           number of elements in AV - 1
+         MAX            total number of elements
+         IVX => not used
+         NVX => not used
+         MAGIC
+         STASH
+         ALLOC =>  Array of SV*  [0,1,2,3,4,5,6,7,8]
+         ARYLEN => Magic SV
+         FLAGS
+</screen>
+
+<para>
+Note that the <varname>ARRAY</varname> field points to the first valid
+element of the Perl array but the <varname>ALLOC</varname> field
+points to the first element of the C array. Usually
+<varname>ARRAY</varname> and <varname>ALLOC</varname> point to the
+same thing but similar to the OOK trick described earlier (<xref
+linkend="ook">)the <varname>ARRAY</varname> field can be used to
+efficiently shift elements off the array without adjusting memory
+requirements simply by incrementing the pointer. Similarly, elements
+can be popped off the top of the array by decrementing
+<varname>FILL</varname>.
+</para>
+
+<example>
+<title><classname>Devel::Peek</classname> of <varname>@a</varname></title>
+<programlisting>
+use Devel::Peek;
+@a = qw(a b);                         <co id="perlvar.arr.dump.arr">
+Dump(\@a);
+</programlisting>
+<calloutlist>
+<callout arearefs="perlvar.arr.dump.arr">
+<para>2 element array</para>
+</callout>
+</calloutlist>
+<screen>
+SV = RV(0x80fb6f8) at 0x80e5910
+  REFCNT = 1
+  FLAGS = (TEMP,ROK)                  <co id="perlvar.arr.dump.flags">
+  RV = 0x80f9c90
+  SV = PVAV(0x80fcba0) at 0x80f9c90
+    REFCNT = 2                        <co id="perlvar.arr.dump.refcnt">
+    FLAGS = ()
+    IV = 0
+    NV = 0
+    ARRAY = 0x80ec048
+    FILL = 1                          <co id="perlvar.arr.dump.fill">
+    MAX = 3                           <co id="perlvar.arr.dump.max">
+    ARYLEN = 0x0                      <co id="perlvar.arr.dump.arylen">
+    FLAGS = (REAL)
+    Elt No. 0
+    SV = PV(0x80e5b04) at 0x80e5838   <co id="perlvar.arr.dump.elt0">
+      REFCNT = 1
+      FLAGS = (POK,pPOK)
+      PV = 0x80faaa8 "a"\0
+      CUR = 1
+      LEN = 2
+    Elt No. 1
+    SV = PV(0x80e5b28) at 0x80e58c8   <co id="perlvar.arr.dump.elt1">
+      REFCNT = 1
+      FLAGS = (POK,pPOK)
+      PV = 0x80f4820 "b"\0
+      CUR = 1
+      LEN = 2
+</screen>
+<calloutlist>
+<callout arearefs="perlvar.arr.dump.flags">
+<para>These flags indicate that the SV passed to the
+<function>Dump</function> function is a reference to another SV and
+that it is temporary.</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.refcnt">
+<para>The reference count is 2 because there is one reference from
+<varname>@a</varname> itself and one from the reference passed to
+<function>Dump</function>.
+</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.fill">
+<para>
+Index of highest entry.
+</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.max">
+<para>
+Highest index that can be stored without allocating more memory.
+</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.arylen">
+<para>
+This pointer is null until <varname>$#</varname> is used for this array.
+</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.elt0">
+<para>
+This is the first element: an <type>SvPV</type> containing the letter
+<quote>a</quote>.
+</para>
+</callout>
+<callout arearefs="perlvar.arr.dump.elt1">
+<para>
+This is the second element: an <type>SvPV</type> containing the letter
+<quote>b</quote>.
+</para>
+</callout>
+
+</calloutlist> 
+</example>
+
+</sect1>
+
+<sect1 id="perlvar.hashes">
+<title>Hashes</title>
+
+<para>
+Hashes (HV's) are the most complex data structure inside Perl and are
+used by many parts of the internals. There is no equivalent to an
+associative array in C so a Perl hash is implemented as an array. A
+simple associative array could be arranged as an array where
+alternating elements are the key and the value and indeed this is one
+way of populating a hash in Perl:
+</para>
+
+<programlisting>
+%hash = ( 'key1', 'value1', 'key2', 'value2'); 
+</programlisting>
+
+<para>
+The problem with this approach is that value retrieval
+is very inefficient for large hashes since the entire array must
+be searched in order to find the correct key:
+</para>
+
+<programlisting>
+for ($i=0; $i<= $#arr; $i+=2) {
+  return $arr[$i+1] if $arr[$i] eq $key;
+}
+</programlisting>
+
+<para>
+A more efficient approach is to translate the key into an array index
+which would result in a hash lookup that is almost as fast as an array
+lookup. The number generated from the key is called a
+<firstterm>hash</firstterm> and this gives the data structure its
+name. In Perl 5.6 a hash number is generated for each key using the
+following algorithm (the specific algorithm is modified slightly as
+perl versions change):
+</para>
+
+<programlisting>
+use integer;
+$hash = 0;
+foreach my $i ( 0..(length($key)-1)) {
+    $hash = $hash * 33 + ord( substr($key,$i,1) );
+}
+$hash += ( $hash >> 5 );
+</programlisting>
+
+<para>Of course, the Perl internals version is written in C.</para>
+
+<para>
+In general this hash number is very large and is translated into an
+index by calculating the bitwise AND of this hash number and the index
+of the largest entry of the array (the size of the array minus one
+since the index starts counting at zero):
+</para>
+
+<programlisting>
+$index = $hash & $#array;
+</programlisting>
+
+<para>
+Since the array sizes used for hashes are always chosen to be a number
+2<superscript>N</superscript>-1 (a binary number containing all 1's)
+this guarantees that the index will be between 0 and the maximum
+allowed value. Unfortunately, this technique does
+<emphasis>not</emphasis> guarantee that the index will be unique for a
+given hash number as only some of the bits from the hash number are
+used in the comparison. This problem is overcome by chaining together
+hash entries with the same index such that each hash entry with the
+same index has a data field containing a reference to the next field
+in the list.  When searching for a specific key the algorithm is
+modified slightly so that it first determines the index from the hash
+and then goes through the chain (known as a <firstterm>linked
+list</firstterm>) until the correct key is found; still much faster
+than searching every entry since the search is reduced simply to those
+entries with a shared index. This technique is called
+<firstterm>collisional hashing</firstterm> since a single index is not
+unique.
+</para>
+
+<screen>
+ [diagram of the array with hash entries]
+
+   KEYS => Number of keys in hash (4 in this case)
+   FILL => Number of slots occupied in array (2 in this case)
+   MAX  => Size of array (7 in this case)
+   ARRAY =>   0  1  2  3  4  5  6  7
+                 |        |
+                 HE1      HE2
+                            |
+                          HE3
+                            |
+                          HE4
+</screen>
+
+<para>
+A hash entry (HE) has the following structure:
+</para>
+
+<programlisting>
+$HE = {
+       NEXT =&gt; $HE_next,          <co id="perlvar.hash.he.next">
+       HEK  =&gt; {                  <co id="perlvar.hash.he.hek">
+                HASH =&gt; $hash,
+                LEN  =&gt; length($key),
+                KEY  =&gt; $key,
+               }
+       VAL  =&gt; $SV,               <co id="perlvar.hash.he.val">
+      };
+</programlisting>
+<calloutlist>
+<callout arearefs="perlvar.hash.he.next">
+<para>Pointer to the next hash entry in the list</para>
+</callout>
+<callout arearefs="perlvar.hash.he.hek">
+<para>Hash Entry Key structure. This is purely a function of the hash
+key and therefore does not change across hashes.</para>
+</callout>
+<callout arearefs="perlvar.hash.he.val">
+<para>SV containing the actual value of the hash entry</para>
+</callout>
+</calloutlist>
+
+<para>
+In a perfect hash the number of hash entries matches the size of the
+array and none of them point to other hash entries.  If the number of
+elements in the list exceeds the size of the array the assumption is
+that too many of the elements are in linked lists, where key searches
+will take too long, rather than evenly spread throughout the array.
+When this occurs the size of the array is doubled and the index of
+every hash entry recalculated. This does not involve recalculating the
+hash number for each element (since that simply involves the key
+itself) only recalculating the index which is the bitwise AND of the
+hash number and the new array size. If you are going to be inserting
+large numbers of keys into a hash it is usually more efficient to
+pre-allocate the array as this prevents many reorganizations as the
+array increases in size. From Perl this can be done using the
+<function>keys</function> function:
+</para>
+
+<programlisting>
+keys %h = 1000;
+</programlisting>
+
+<para>
+In the following dump, the keys have different hash numbers but
+translate to the same index (when the max size of the array is 7). 
+</para>
+
+<screen>
+<prompt>%</prompt> <userinput>perl -MDevel::Peek -e 'Dump({AF=&gt;"hello",a=&gt;52})'</userinput>
+SV = RV(0x80fbab8) at 0x80e5748
+  REFCNT = 1
+  FLAGS = (TEMP,ROK)
+  RV = 0x80e5838
+  SV = PVHV(0x80fd540) at 0x80e5838
+    REFCNT = 2
+    FLAGS = (SHAREKEYS)                      <co id="perlvar.hash.dump.flags">
+    IV = 2
+    NV = 0
+    ARRAY = 0x80eba08  (0:7, 2:1)            <co id="perlvar.hash.dump.freq">
+    hash quality = 75.0%                     <co id="perlvar.hash.dump.qual">
+    KEYS = 2                                 <co id="perlvar.hash.dump.keys">
+    FILL = 1                                 <co id="perlvar.hash.dump.fill">
+    MAX = 7                                  <co id="perlvar.hash.dump.max">
+    RITER = -1
+    EITER = 0x0
+    Elt "a" HASH = 0x64                      <co id="perlvar.hash.dump.elt1">
+    SV = IV(0x80f0b98) at 0x80e594c
+      REFCNT = 1
+      FLAGS = (IOK,pIOK,IsUV)
+      UV = 52
+    Elt "AF" HASH = 0x8ec                    <co id="perlvar.hash.dump.elt2">
+    SV = PV(0x80e5b04) at 0x80e5904
+      REFCNT = 1
+      FLAGS = (POK,pPOK)
+      PV = 0x80faa98 "hello"\0
+      CUR = 5
+      LEN = 6
+</screen>
+<calloutlist>
+<callout arearefs="perlvar.hash.dump.flags">
+<para>This flag indicates that the keys (the HEK structures) should be
+stored in a location visible to all hashes
+(<varname>PL_strtab</varname>)</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.freq">
+<para>
+The bracketed numbers indicate how the hash is populated. In this
+example there are 7 slots in the array with 0 hash entries and one
+slot with 2 entries.
+</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.qual">
+<para>Measure of the hash efficiciency. This number attempts to
+reflect how well filled the hash is. If many hash entries share the
+same slot this number is less than 100%.</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.keys">
+<para>Total number of keys stored in the hash</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.fill">
+<para>Number of slots filled in the array.</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.max">
+<para>Current size of the array</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.elt1">
+<para>Description of SV stored using key <quote>a</quote>. The hash value
+is <literal>0x64</literal> in hex which translates to slot 4 when the
+hash has a size of 7.</para>
+</callout>
+<callout arearefs="perlvar.hash.dump.elt2">
+<para>Description of SV stored using key <quote>AF</quote>. The hash
+value is <literal>0x8ec</literal> in hex which translates to slot 4
+when the hash has a size of 7.
+</para>
+</callout>
+</calloutlist>
+
+
+<para>
+The <varname>RITER</varname> and <varname>EITER</varname> fields are
+used to keep track of position when looping through the hash (for
+example with the <function>each</function> or
+<function>keys</function> functions). <varname>EITER</varname>
+contains a pointer to the current hash entry and
+<varname>RITER</varname> contains the array index of that entry. The
+next hash entry is then determined by first looking in the HE for the
+next entry in the linked list and if that is not defined incrementing
+<varname>RITER</varname> and looking into the array until another hash
+entry is found.
+</para>
+
+<para>
+Since a particular hash key <emphasis>always</emphasis> translates to
+the same hash number, if the <varname>SHAREKEYS</varname> flag is set
+Perl uses an internal table (called <varname>PL_strtab</varname>) to
+store every hash key (HEK structure) currently in use. The key is only
+removed from the table when the last reference to it is removed. This
+feature is especially useful when using object-oriented programming
+since each instance of a hash object will only use a single set of
+keys.
+</para>
+</sect1>
+
+  <sect1 id="perlvar.gv">
+    <title>Globs</title>
+
+    <para>
+In Perl a <firstterm>glob</firstterm> provides a way of accessing
+package variables that share the same name. Whereas globs were
+important in earlier versions of perl the design of Perl5 has meant
+that they are hardly ever required by Perl programmers doing
+<emphasis>normal</emphasis> tasks. In fact, as of version 5.6.0 of
+perl it is no longer even required to know that filehandles are
+globs<footnote><para>In perl5.6.0 it is now possible to say
+<userinput>open my $fh, $file</userinput> and treat
+<varname>$fh</varname> as a normal scalar variable.</para></footnote>
+Globs are required in order to understand the internal representation
+of variables and this section describes how they are implemented.
+</para>
+
+    <para>
+A glob variable is based on the structure of magic variable (see <xref
+linkend="perlvar.magic">) with the addition of fields for storing the name
+of the glob (<varname>NAME</varname> and <varname>NAMELEN</varname>),
+the namespace of the glob (<varname>GvSTASH</varname>) and the shared
+glob information (<varname>GP</varname>):
+</para>
+
+    <screenco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="2" id="perlvar.gv.dump.pvgv">
+	<area coords="4" id="perlvar.gv.dump.flags">
+	<area coords="8" id="perlvar.gv.dump.mgv">
+	<area coords="9" id="perlvar.gv.dump.mgt">
+	<area coords="11" id="perlvar.gv.dump.name">
+	<area coords="13" id="perlvar.gv.dump.gvstash">
+	<area coords="14" id="perlvar.gv.dump.gp">
+	<area coords="15" id="perlvar.gv.dump.gp.sv">
+	<area coords="16" id="perlvar.gv.dump.gp.refcnt">
+	<area coords="17" id="perlvar.gv.dump.gp.io">
+	<area coords="18" id="perlvar.gv.dump.gp.form">
+	<area coords="19" id="perlvar.gv.dump.gp.av">
+	<area coords="20" id="perlvar.gv.dump.gp.hv">
+	<area coords="21" id="perlvar.gv.dump.gp.cv">
+	<area coords="24" id="perlvar.gv.dump.gp.line">
+	<area coords="25" id="perlvar.gv.dump.gp.file">
+	<area coords="27" id="perlvar.gv.dump.gp.egv">
+      </areaspec>
+<screen>
+<prompt>%</prompt> <userinput>perl -MDevel::Peek -e 'Dump(*a)'</userinput>
+SV = PVGV(0x8111678) at 0x810cd34
+  REFCNT = 2
+  FLAGS = (GMG,SMG)
+  IV = 0
+  NV = 0
+  MAGIC = 0x81116e8
+    MG_VIRTUAL = &amp;PL_vtbl_glob
+    MG_TYPE = '*'
+    MG_OBJ = 0x810cd34
+  NAME = "a"
+  NAMELEN = 1
+  GvSTASH = 0x81004f4	"main"
+  GP = 0x81116b0
+    SV = 0x810cce0
+    REFCNT = 1
+    IO = 0x0
+    FORM = 0x0
+    AV = 0x0
+    HV = 0x0
+    CV = 0x0
+    CVGEN = 0x0
+    GPFLAGS = 0x0
+    LINE = 1
+    FILE = "-e"
+    FLAGS = 0x0
+    EGV = 0x810cd34	"a"
+
+</screen>
+      <calloutlist>
+	<callout arearefs="perlvar.gv.dump.pvgv">
+	  <para>A glob structure is called a PVGV.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.flags">
+	  <para>These flags indicate that set and get magic are
+	  available.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.mgv">
+	  <para>This is the name of the table containing the glob
+	  <function>get</function>/<function>set</function>
+	  functions.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.mgt">
+	  <para>The type of magic is <quote>*</quote> indicating that
+	  this is a glob.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.name">
+	  <para>This is the name of the glob. All package variables of
+	  this name will be contained in this glob.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gvstash">
+	  <para>This is the namespace to which this glob belongs. Each
+	  namespace has its own set of globs. Package variables are
+	  implemented using globs and stashes. Stashes are discussed
+	  in <xref linkend="perlvar.stashes">.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp">
+	  <para>The GP structure can be shared between one or more
+	  GV's. This structure contains the variable information
+	  specific to a particular glob. They are separate so that
+	  multiple GV's can share a single GP in order to implement
+	  variable aliasing.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.sv">
+	  <para>This contains a reference to the SV stored in
+	  <varname>$a</varname>.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.refcnt">
+	  <para>The reference count of the GP structure. This
+	  increases each time a variable is aliased.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.io">
+	  <para>This contains a reference to the filehandle stored in
+	  <varname>a</varname>. This is currently set to
+	  <literal>0x0</literal> indicating that there is no
+	  filehandle of this name.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.form">
+	  <para>This contains a reference to the format stored in
+	  <varname>a</varname>. This is currently set to
+	  <literal>0x0</literal> indicating that there is no format of
+	  this name.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.av">
+	  <para>This contains a reference to the array stored in
+	  <varname>@a</varname>. This is currently set to
+	  <literal>0x0</literal> indicating that there is no array of
+	  this name.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.hv">
+	  <para>This contains a reference to the hash stored in
+	  <varname>%a</varname>. This is currently set to
+	  <literal>0x0</literal> indicating that there is no hash of
+	  this name.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.cv">
+	  <para>This contains a reference to the subroutine stored in
+	  <varname>&amp;a</varname>. This is currently set to
+	  <literal>0x0</literal> indicating that there is no
+	  subroutine of this name.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.line">
+	  <para>This is the line number of the file where the glob
+	  first occurred.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.file">
+	  <para>This is the name of the file that declared the
+	  glob.</para>
+	</callout>
+	<callout arearefs="perlvar.gv.dump.gp.egv">
+	  <para>This is the name and reference of the glob that
+	  created this GP structure. This is used to keep track of the
+	  original variable name after aliasing.</para>
+	</callout>
+      </calloutlist>
+    </screenco>
+
+<para>
+<xref linkend="perlvar.glob"> further illustrates how globs work by showing
+how aliasing affects the glob structure:
+</para>
+
+<example id="perlvar.glob">
+<title>Glob aliasing</title>
+
+<programlistingco>
+<areaspec>
+<areaset coords="" id="perlvar.gv.dump2.prog.var">
+<area coords="2" id="perlvar.gv.dump2.prog.io">
+<area coords="3" id="perlvar.gv.dump2.prog.sv">
+<area coords="4" id="perlvar.gv.dump2.prog.av">
+<area coords="5" id="perlvar.gv.dump2.prog.cv">
+</areaset>
+<area coords="6" id="perlvar.gv.dump2.prog.alias">
+</areaspec>
+<programlisting>
+use Devel::Peek;
+open(A,"/dev/null");
+$A = 5;
+@A = (2,3,4);
+sub A { 1; }
+*b = *A;
+Dump(*b);
+</programlisting>
+<calloutlist>
+<callout arearefs="perlvar.gv.dump2.prog.var">
+<para>
+Use the variable named <varname>A</varname> to store different perl types.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.prog.alias">
+<para>
+Make <varname>b</varname> an alias of <varname>A</varname>.
+</para>
+</callout>
+</calloutlist>
+
+</programlistingco>
+
+<screenco>
+<areaspec>
+<area id="perlvar.gv.dump2.refcnt" coords="2">
+<area id="perlvar.gv.dump2.flags"  coords="3">
+<area id="perlvar.gv.dump2.mgp"    coords="11">
+<area id="perlvar.gv.dump2.name"   coords="12">
+<area id="perlvar.gv.dump2.gp.refcnt" coords="17">
+<areaset id="perlvar.gv.dump2.gp.vars" coords="">
+<area id="perlvar.gv.dump2.gp.io" coords="18">
+<area id="perlvar.gv.dump2.gp.av" coords="20">
+<area id="perlvar.gv.dump2.gp.cv" coords="22">
+</areaset>
+<area id="perlvar.gv.dump2.gp.egv" coords="28">
+</areaspec>
+<screen>
+SV = PVGV(0x81082b0) at 0x811a0d8
+  REFCNT = 3
+  FLAGS = (GMG,SMG,MULTI)
+  IV = 0
+  NV = 0
+  MAGIC = 0x8108718
+    MG_VIRTUAL = &amp;PL_vtbl_glob
+    MG_TYPE = '*'
+    MG_OBJ = 0x811a0d8
+    MG_LEN = 1
+    MG_PTR = 0x8108738 "b"
+  NAME = "b"
+  NAMELEN = 1
+  GvSTASH = 0x80f8608	"main"
+  GP = 0x810a350
+    SV = 0x81099d0
+    REFCNT = 2
+    IO = 0x8104664
+    FORM = 0x0  
+    AV = 0x8109a30
+    HV = 0x0
+    CV = 0x811a0f0
+    CVGEN = 0x0
+    GPFLAGS = 0x0
+    LINE = 2
+    FILE = "glob.pl"
+    FLAGS = 0x2
+    EGV = 0x8104598	"A"
+
+</screen>
+<calloutlist>
+<callout arearefs="perlvar.gv.dump2.refcnt">
+<para>
+This is the reference count of the GV <varname>*b</varname> and
+is distinct from GV <varname>*A</varname>. This has 3 references to
+it: one in the main program, one from the argument passed to
+<function>Dump></function> and ...<remark>there always seems to be at
+least 2 so what is the first reference? Presumably it is from the symbol
+table itself although surely *A covers that.</remark>
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.flags">
+<para>
+In addition to the flags decribed previously there is an additional
+flag to indicate that more than one variable is stored in the glob.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.mgp">
+<para>
+This is the name of the glob associated with the magic structure.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.name">
+<para>
+This is the name of the GV that is being listed.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.gp.refcnt">
+<para>
+Reference count of this GP structure. In this case it is being used by
+<varname>*A</varname> and <varname>*b</Varname> so the reference count
+is 2.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.gp.vars">
+<para>
+Pointers to the variables that were created using this package name.
+There is a scalar, a filehandle, an array and a subroutine all
+sharing a name.
+</para>
+</callout>
+<callout arearefs="perlvar.gv.dump2.gp.egv">
+<para>
+The name of the first GV to use this GP. In this case <varname>A</varname>.
+</para>
+</callout>
+
+</calloutlist>
+
+</screenco>
+</example>
+
+  </sect1>
+
+  <sect1 id="perlvar.stashes">
+    <title>Namespaces - Stashes</title>
+
+    <para>
+Namespaces are used by Perl to separate global variables into
+groups. Each global variable used by Perl belongs to a namespace. The
+default namespace is <varname>main::</varname><footnote><para>In all
+cases the <varname>main::</varname> namespace can be abbreviated simply to
+<varname>::</varname></para></footnote> (compare this with the
+<function>main</function> in C) and all globals belong to this
+namespace unless the <function>package</function> keyword has been
+used or unless a namespace is explcitly specified:
+</para>
+    
+    <programlistingco>
+      <areaspec>
+	<area coords="1" id="perlvar.stash.bar">
+	<areaset coords="" id="perlvar.stash.foo.bar">
+	  <area coords="2" id="perlvar.stash.foo.bar.main">
+	  <area coords="5" id="perlvar.stash.foo.bar.foobar">
+	</areaset>
+      </areaspec>
+      <programlisting>
+$bar = "hello";
+$Foo::bar = 3;
+
+package Foo;
+$bar = 2;
+      </programlisting>
+      <calloutlist>
+      <callout arearefs="perlvar.stash.bar">
+	<para>Sets <varname>$main::bar</varname></para>
+      </callout>
+      <callout arearefs="perlvar.stash.foo.bar">
+	<para>Sets <varname>$Foo::bar</varname></para>
+      </callout>
+    </calloutlist>
+    </programlistingco>
+
+<para>
+Internally, namespaces are stored in <firstterm>symbol table
+hashes</firstterm> that are called <firstterm>stashes</firstterm>.
+They are implemented exactly as the name suggests. Each namespace (or
+symbol table) is made up of a hash where the keys of the hash are the
+variable names present in the namespace and the values are GVs
+containing all the variables that share that name. Stashes can also
+contain references to stashes in related namespaces by using the hash
+entry in the GV to point to another stash; Perl assumes that any stash
+key ending in <varname>::</varname> indicates a reference to another
+stash. The root symbol table is called <varname>defstash</varname> and
+contains <varname>main::</varname>. In order to look up variable
+<varname>$a</varname> in package Foo::Bar the following occurs:
+</para>
+<orderedlist>
+	<listitem>
+	  <para>Starting from <varname>defstash</varname> look up
+<varname>Foo::</varname> in the <varname>main::</varname> stash. This
+points to the <varname>Foo::</varname> glob.</para>
+	</listitem>
+      <listitem>
+	<para>Now look up the HV entry in the glob. This points to the
+<varname>Foo::</varname> stash.</para>
+      </listitem>
+      <listitem>
+	<para>Look up <varname>Bar::</varname> in this stash to
+retrieve the GV containing the hash for this stash.</para>
+      </listitem>
+      <listitem>
+	<para>Look up <varname>a</varname> in the
+<varname>Bar::</varname> hash to get the glob.</para>
+      </listitem>
+      <listitem>
+	<para>Dereference the required SV.</para>
+      </listitem>
+      </orderedlist>
+<para>
+As you can see, finding package variables in nested namespaces has a
+large overhead!  <remark>There is an excellent diagram of this in
+illguts</remark> One final thing to note about hashes is that Perl
+does not hide the implementation details. The symbol table hashes can
+be listed just like any other Perl hash:
+</para>
+<screen>
+<prompt>%</prompt> <userinput>perl -e '$Foo::bar = 2; print $Foo::{bar},"\n"'</userinput>
+*Foo::bar
+</screen>
+<para>
+Here the <varname>bar</varname> entry in the hash
+<varname>%Foo::</varname> is a glob named <varname>Foo::bar</varname>
+that contains the scalar variable that has a value of
+<literal>2</literal>.  This can be proven by aliasing this hash to
+another glob: 
+</para>
+<screen>
+<prompt>%</prompt> <userinput>perl -e '$Foo::bar = 2; *x = $Foo::{bar}; print "$x\n"'</userinput>
+2
+</screen>
+
+<remark>Do we mention how locals work? This probably comes under
+discussion of stacks and ops</remark>
+
+</sect1>
+
+<sect1 id="perlvar.my">
+<title>Lexical <quote>my</quote> variables</title>
+
+<para>
+Lexical variables are associated with code blocks rather than
+namespaces so they are implemented in a very different way to globals.
+Each code block (a CV, see <xref linkend="perlvar.cv">) contains a
+reference to an array (an AV) of scratch pads. This array is called a
+<firstterm>padlist</firstterm>. The first entry in this padlist is a
+scratch pad (also an AV) that lists all the lexical variables used by
+the block (not just those that were declared in the block). The names
+contain the full variable type (i.e. $, %, @) so that
+<varname>$a</varname> and <varname>@a</varname> have different
+entries. The second scratch pad is an array that contains the values
+for each of these variables. The main complication occurs with
+recursion. Each time a block of code calls itself recursively you need
+to make sure that the variables available to the block can not affect
+variables in the block that called this one. In order that each
+recursive call does not trash the previous contents of the variables
+in the scratch pads for that block a new entry in the padlist is
+created for each level of recursion.
+</para>
+
+<screen>
+
+  CV ----> padlist ---->   [  $a , %a,  $z,  @z ... ]  Lex var names
+                    |
+                    |-->   [   5 ...                ] scratch pad 1
+                    |
+                    |-->   [                        ] scratch pad 2
+
+</screen>
+<remark>This should be a diagram</remark>
+
+<para>
+This layout means that at least 3 <type>AV</type>'s are required to
+implement lexical variables in each code block: one to hold the
+variable names, one to hold the values the first set of values, and
+one to hold both these arrays and subsequent ones (the padlist and two
+scratch pads). Lexical variables are faster than local variables
+because the scratch pads are created at compile time (since Perl knows
+which variables are to be associated with each block at that point)
+and can be accessed directly.
+</para>
+
+<remark>Simon: Robin from London.PM said this, which may
+be helpful: It still took me most of a day to *actually* figure
+scratchpads out, because APP neglected to mention that the scope of a
+lexical was indicated by cop_seq numbers stored in the NV and IV slots
+of the name SV.</remark> 
+<remark>Tim: But do we want to talk about cop_seq in here since this is
+just explaining organization? Usage comes later</remark>
+
+
+
+</sect1>
+
+<sect1 id="perlvar.cv">
+<title>Code blocks</title>
+
+<para>
+Subroutines or code blocks in perl are thought of in the same way as
+other Perl variables. A Code Value (CV) contains information on Perl
+subroutines and the layout is similar to the structure of other
+variables with additional fields dealing with issues such as namespace
+(<xref linkend="perlvar.gv">), pad lists (<xref linkend="perlvar.my">) and
+opcodes (<xref linkend="internals.optree">):
+</para>
+
+    <screenco>
+      <areaspec>
+	<!-- one of (AREASET AREA) -->
+	<area coords="6" id="perlvar.cv.pvcv">
+	<area coords="11" id="perlvar.cv.compstash">
+	<areaset coords="" id="perlvar.cv.ops">
+	  <area coords="12" id="perlvar.cv.ops.start">
+	  <area coords="13" id="perlvar.cv.ops.root">
+	</areaset>
+	<areaset coords="" id="perlvar.cv.xsub">
+	  <area coords="14" id="perlvar.cv.xsub.xsub">
+	  <area coords="15" id="perlvar.cv.xsub.any">
+	</areaset>
+	<area coords="16" id="perlvar.cv.gv">
+	<area coords="17" id="perlvar.cv.gv.file">
+	<area coords="18" id="perlvar.cv.depth">
+	<area coords="19" id="perlvar.cv.flags">
+	<area coords="20" id="perlvar.cv.padlist">
+      </areaspec>
+      <screen>
+<prompt>%</prompt> <userinput>perl -MDevel::Peek -e 'sub foo {}; Dump(\&amp;foo)'</userinput>
+SV = RV(0x8111408) at 0x80f86e0
+  REFCNT = 1
+  FLAGS = (TEMP,ROK)
+  RV = 0x8109b7c
+  SV = PVCV(0x811b524) at 0x8109b7c
+    REFCNT = 2
+    FLAGS = ()
+    IV = 0
+    NV = 0
+    COMP_STASH = 0x80f8608	"main"
+    START = 0x8108aa0 ===> 655
+    ROOT = 0x810b020
+    XSUB = 0x0
+    XSUBANY = 0
+    GVGV::GV = 0x8109ae0	"main" :: "foo"
+    FILE = "-e"
+    DEPTH = 0
+    FLAGS = 0x0
+    PADLIST = 0x8109b28
+    OUTSIDE = 0x80f8818 (MAIN)
+
+</screen>
+      <calloutlist>
+	<callout arearefs="perlvar.cv.pvcv">
+	  <para>The structure is of type <type>PVCV</type></para>
+	</callout>
+	<callout arearefs="perlvar.cv.compstash">
+<para>This is the location and name of the symbol table hash that is
+in effect when this subroutine executes. In this example there are no
+packages declared and the <varname>main::</varname> stash is in scope.
+</para>
+	</callout>
+	<callout arearefs="perlvar.cv.ops">
+<para>These items refer to the actual opcodes that are used to
+implement the subroutine. These are explained in <xref linkend="internals.optree">
+</para>
+	</callout>
+	<callout arearefs="perlvar.cv.xsub">
+	  <para>When this subroutine represents an external C function
+	  these fields contains a pointer to that function and other
+	  related information. See <xref linkend="xsintro"> for more
+	  information on this topic</para>
+	</callout>
+	<callout arearefs="perlvar.cv.gv">
+	  <para>This is a pointer to the GV that contains this
+	  subroutine. Recall that a glob can contain references to all
+	  the Perl variable types, in this case the GV is named
+	  <varname>*main::foo</varname>.</para>
+	</callout>
+	<callout arearefs="perlvar.cv.gv.file">
+	  <para>The name of the file that defined the subroutine. This
+subroutine was created on the command line.</para>
+	</callout>
+	<callout arearefs="perlvar.cv.depth">
+	  <para>This contains the recursion depth of the
+subroutine. For each level of recursion this number increments and
+this allows the correct entries in the padlist to be retrieved.</para>
+	</callout>
+	<callout arearefs="perlvar.cv.flags">
+	  <para>This is the actual value of the flags field that is
+expanded in words at the top of the dump</para>
+	</callout>
+	<callout arearefs="perlvar.cv.padlist">
+	  <para>This is a reference to the padlist containing all the
+lexical variables required by this subroutine.</para>
+	</callout>
+      </calloutlist>
+    </screenco>
+
+<para>The following flags are of particular interest when examining CVs:
+</para>
+
+    <variablelist>
+      <varlistentry>
+	<term>ANON</term>
+	<listitem>
+	  <para>Indicates that the subroutine is anonymous
+(e.g. <userinput>$x = sub { 1; };</userinput>). When this flag is set
+the GV associated with the CV is meaningless since the subroutine is
+not present in any stash.</para>
+	</listitem>
+      </varlistentry>
+      <varlistentry>
+	<term>LVALUE</term>
+	<listitem>
+<para>Indicates that the subroutine can be used as an lvalue.</para>
+<programlisting>
+use Devel::Peek;
+$x = 1;
+sub foo :lvalue {
+  $x;
+}
+print foo,"\n";
+foo = 5;
+print foo,"\n";
+
+Dump(\&amp;foo);
+</programlisting>
+<para>would show:</para>
+
+	  <screenco>
+	    <areaspec>
+	      <!-- one of (AREASET AREA) -->
+	      <area coords="1" id="perlvar.cveg.l1">
+	      <area coords="2" id="perlvar.cveg.l2">
+	      <area coords="9" id="perlvar.cveg.flags">
+	      <area coords="18" id="perlvar.cveg.file">
+	    </areaspec>
+	    <screen>
+1
+5
+SV = RV(0x8109998) at 0x8100dec
+  REFCNT = 1
+  FLAGS = (TEMP,ROK)
+  RV = 0x810d4f8
+  SV = PVCV(0x8109044) at 0x810d4f8
+    REFCNT = 2
+    FLAGS = (LVALUE)
+    IV = 0
+    NV = 0
+    COMP_STASH = 0x8100d14	"main"
+    START = 0x8113490 ===> 1178
+    ROOT = 0x8130d48
+    XSUB = 0x0
+    XSUBANY = 0
+    GVGV::GV = 0x810d4d4	"main" :: "foo"
+    FILE = "lvexample.pl"
+    DEPTH = 0
+    FLAGS = 0x100
+    PADLIST = 0x810d528
+    OUTSIDE = 0x8109e34 (MAIN)
+
+</screen>
+
+	    <calloutlist>
+	      <callout arearefs="perlvar.cveg.l1">
+<para>This shows the initial state of <varname>$x</varname>.</para>
+	      </callout>
+	      <callout arearefs="perlvar.cveg.l2">
+<para><varname>$x</varname> now has a value of 5.</para>
+	      </callout>
+	      <callout arearefs="perlvar.cveg.flags">
+<para>The <varname>LVALUE</varname> flag is now set confirming that
+the subroutine can be used as an lvalue.</para>
+	      </callout>
+	      <callout arearefs="perlvar.cveg.file">
+<para>The example was stored in a file so now the
+<varname>FILE</varname> file field contains a proper filename.
+</para>
+	      </callout>
+	    </calloutlist>
+	  </screenco>
+
+
+	</listitem>
+      </varlistentry>
+
+    </variablelist>
+
+
+<remark>Not sure there is any value in discussing esoteric flags such
+as CLONE, CLONED, UNIQUE, METHOD, LOCKED and CONST</remark>
+</sect1>
+
+<sect1>
+<title>Further Reading</title>
+
+<para>
+More detailed information on the structure of perl's internal
+data structures can be found at the following locations:
+</para>
+
+<variablelist>
+
+<varlistentry>
+<term>perlguts</term>
+<term>perlapi</term>
+
+<listitem>
+<para>
+The main source of Perl internals documentation are the
+<filename>perlguts</filename> and <filename>perlapi</filename> man
+pages that comes with the Perl distribution
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>illguts</term>
+
+<listitem>
+<para>
+<ulink
+url="http://gisle.aas.no/perl/illguts/">Perl Guts Illustrated</ulink>
+by Gisle Aas provides an alternative illustrated explanation of the
+internal implementation of perl variable types.
+</para>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term><filename>sv.h</filename></term>
+<term><filename>av.h</filename></term>
+<term><filename>hv.h</filename></term>
+<term><filename>mg.h</filename></term>
+<term><filename>cv.h</filename></term>
+<listitem>
+<para>
+This is where all the structures and flags are defined. If you really
+want to know the details of what is happening read these C include files
+that come with the Perl source.
+</para>
+</listitem>
+</varlistentry>
+
+</variablelist>
+</sect1>
+
+</chapter>
+

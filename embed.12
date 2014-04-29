@@ -1,0 +1,8 @@
+
+    PUSHMARK(sp);
+    XPUSHs(object);
+    XPUSHs(param);
+    PUTBACK;
+
+    call_method("display", G_DISCARD);
+

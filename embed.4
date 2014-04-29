@@ -1,0 +1,24 @@
+#include <EXTERN.h>
+#include <perl.h>
+
+static PerlInterpreter *my_perl;
+
+int parse_config(char * config_file)
+{
+    char* command_line[2] = {"", NULL};
+    command_line[1] = config_file;
+
+    my_perl = perl_alloc();
+    perl_construct(my_perl);
+    if (perl_parse(my_perl, NULL, 3, command_line, (char **)NULL)) {
+        return 0; /* Failed to parse */ 
+    }
+
+    perl_run(my_perl);
+    if (SvTRUE(ERRSV)) {
+        return 0; /* Failed to execute */
+    }
+
+    return 1;
+}
+

@@ -1,0 +1,10 @@
+char* tidy_string (char* input) {
+    SV* result;
+
+    setSVpv(PL_defsv, input, 0);
+    result = eval_pv("use Text::Autoformat; autoformat($_)", FALSE);
+    if (SvTRUE(ERRSV)) 
+        return NULL;
+    else
+        return SvPV_nolen(result);
+}

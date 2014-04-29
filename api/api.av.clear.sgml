@@ -1,0 +1,88 @@
+<sect3 id="api.av.clear">
+    <title><function>av_clear</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef><function>av_clear</function></funcdef>
+        <paramdef>AV* <parameter>av</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+	  <function>av_clear</function> simply removes all of the
+	  elements from an array, decreasing the reference count of
+	  all of the <type>SV</type>s in it.
+</para>
+<example>
+<title> Emptying an array </title>
+<para>
+<!-- Introduction to example -->
+
+	    One of the things that the <classname>Tk</classname>
+	    module has to do is marshal data between Tcl and Perl. For
+	    instance, if we want to assign from Tcl to a Perl value,
+	    we have to first get the Perl value into an appropriate
+	    state. If we're doing a scalar assignment, we need to make
+	    sure our SV is a scalar. Here's how
+	    <classname>Tk</classname> does it:
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="4" id="api.av.clear.1">
+        <area coords="7" id="api.av.clear.2">
+        <area coords="8" id="api.av.clear.3">
+        <area coords="9" id="api.av.clear.4">
+          </areaspec>
+          <programlisting>
+static SV *
+ForceScalarLvalue(SV *sv)
+{
+ if (SvTYPE(sv) == SVt_PVAV)
+  {
+   AV *av = (AV *) sv;
+   SV *nsv = newSVpv("",0);
+   av_clear(av);
+   av_store(av,0,nsv);
+   return nsv;
+  }
+ else
+  {
+   return sv;
+  }
+</programlisting>
+	    <calloutlist>
+	      <callout arearefs="api.av.clear.1">
+		<para>
+		  The <type>SV</type> that we're handed may be a real
+		  scalar, or it might be an array. We use
+		  <function>SvTYPE</function> (See <xref
+		  linkend="api.svtype">) to determine its type. If
+		  it's just a scalar, we can simply return it. If it's
+		  an array, though, we have to deal with it.
+		</para>
+	      </callout>
+
+	      <callout arearefs="api.av.clear.2">
+		<para>
+		  We create a new empty SV to receive the assignment.
+		</para>
+	      </callout>
+	      <callout arearefs="api.av.clear.3">
+		<para>
+		  Next, we get rid of everything in the array: what
+		  we're effectively doing is <userinput>@PerlArray =
+		  $TclValue</userinput>, which will obviously have to
+		  get rid of what was in the array before.
+		</para>
+	      </callout>
+	      <callout arearefs="api.av.clear.4">
+		<para>
+		  Then we store the recipient SV into the first
+		  element of the newly emptied array.
+		</para>
+	      </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.hv.clear"></para>
+      </sect3>

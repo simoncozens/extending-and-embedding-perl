@@ -1,0 +1,1602 @@
+<chapter>
+  <title>Hacking Perl</title>
+  <para>
+Perl, just like any other piece of software, is not a finished
+product; Perl is still being developed, and has a lively development
+community. Both of the authors are regular contributors to Perl, and
+we'd like to encourage you to get think about getting involved with
+Perl's continued maintainance and development. This chapter will tell
+you what you need to know to start. 
+</para>
+  <sect1>
+    <title>The Development Process</title>
+    <sect2>
+      <title>Perl Versioning</title> 
+
+<para>
+Perl has two types of version number: versions before 5.6.0 used a
+number of the form <literal>x.yyy_zz</literal>; <literal>x</literal>
+was the major version number, (Perl 4, Perl 5) <literal>y</literal> was
+the minor release number, and <literal>z</literal> was the patchlevel.
+Major releases represented, for instance, either a complete rewrite or a
+major upheaval of the internals; minor releases sometimes added
+non-essential functionality, and releases changing the patchlevel were
+primarily to fix bugs. Releases where <literal>z</literal> was 50 or
+more were unstable, developers' releases working towards the next minor
+release.
+</para>
+
+<para>
+Now, since, 5.6.0, Perl uses the more standard open source version
+numbering system - version numbers are of the form
+<literal>x.y.z</literal>; releases where <literal>y</literal> is
+even are stable releases, and releases where it is odd are part of the
+<firstterm>development track</firstterm>.
+</para>
+    </sect2>
+
+    <sect2>
+      <title>The Development Tracks</title>
+      <para>
+Perl development has four major aims: extending portability, fixing
+bugs, optimizations, and adding language features. Patches to Perl are
+usually made against the latest copy of the development release; the
+very latest copy, stored in the Perl repository (see <xref
+linkend="perlrep"> below) is usually called `bleadperl'.
+</para>
+
+<para>
+The bleadperl eventually becomes the new minor release, but patches
+are also picked up by the maintainer of the stable release for
+inclusion.  While there are no hard and fast rules, and everything is
+left to the discretion of the maintainer, in general, patches which
+are bug fixes or address portability concerns (which include taking
+advantage of new features in some platforms, such as large file
+support or 64 bit integers) are merged into the stable release as
+well, whereas new language features tend to be left until the next
+minor release. Optimizations may or may not be included, depending on
+their impact on the source.
+</para>
+    </sect2>
+    <sect2>
+      <title>Perl 5 Porters</title>
+      <para>
+All Perl development goes on on the <literal>perl5-porters</literal>
+mailing list; if you are planning to get involved, a subscription to
+this is essential. 
+</para>
+      <para>
+You can subscribe by sending an email to
+<literal>perl5-porters-subscribe@perl.org</literal>; you'll be asked
+to send an email to confirm, and then you should start receiving mail
+from the list. To send mail, to the list, address the mail to
+<literal>perl5-porters@perl.org</literal>; you don't have to be
+subscribed to post, and the list is not moderated. If, for whatever reason,
+you decide to unsubscribe, simply mail
+<literal>perl5-porters-unsubscribe@perl.org</literal>.
+</para>
+      <para>
+The list usually receives between 200 and 400 mails a week. If this is
+too much for you, you can subscribe instead to a daily digest service
+by mailing <literal>perl5-porters-digest-subscribe@perl.org</literal>.
+</para>
+      <para>
+There is also a <ulink
+url="http://simon-cozens.org/writings/p5p.faq"><literal>perl5-porters</literal>
+FAQ</ulink> which explains a lot of this, plus more about how to
+behave on P5P and how to submit patches to Perl.
+</para>
+    </sect2>
+    <sect2>
+      <title>Pumpkins and Pumpkings</title>
+      <para>
+Development is very loosely organised around the release managers of
+the stable and the development tracks; these are the two
+``pumpkings''.
+</para>
+
+<para>
+Perl development can also be divided up into several smaller
+sub-systems: the regular expression engine, the configuration process,
+the documentation, and so on. Responsibility for each of these areas
+is known as a ``pumpkin'', and hence those who semi-officially take
+responsibility for are called ``pumpkings''.
+</para>
+
+      <para>
+You're probably wondering why the silly names. It stems from the days
+before Perl was kept under version control, and people had to manually
+`check out' a chunk of the Perl source to avoid conflicts by
+announcing their intentions to the mailing list; while they were
+discussing what this should be called, one of Chip Salzenburg's
+co-workers told him about a system they had used for preventing two
+people using a tape drive at once: there was a stuffed pumpkin in the
+office, and nobody could use the drive unless they had the pumpkin.
+</para>
+    </sect2>
+    <sect2 id="perlrep">
+      <title>The Perl Repository</title>
+      <para>
+Now Perl is kept in a version control system called <ulink
+url="http://www.perforce.com/">Perforce</ulink>, which is hosted by
+ActiveState, Inc. There is no public access to the system itself, but
+various methods have been devised to allow developers near-realtime
+access. 
+</para>
+      <para>Firstly, there is the 
+<ulink url="ftp://ftp.linux.activestate.com/pub/staff/gsar/APC/">Archive
+of Perl Changes.</ulink> This FTP site contains both the current state
+of all the maintained Perl versions, and also a directory of changes
+made to the repository.
+</para>
+      <para>
+Since it's a little inconvenient to keep up to date using FTP, the
+directories are also available via the software synchronisation
+protocol <ulink url="http://rsync.samba.org/">rsync</ulink>. If you
+have <command>rsync</command> installed, you can synchronise your
+working directory with bleadperl by issuing the command
+
+<screen>
+<prompt>%</prompt> <userinput>rsync -avz rsync://ftp.linux.activestate.com/perl-current/ .
+</userinput>
+</screen>
+</para>
+      <sidebar>
+	<para>
+	  If you use this route, you should periodically add the
+	  <option>--delete</option> option to <command>rsync</command>
+	  to clean out any files which have been deleted from the
+	  repository. Once, a proposed feature and its test were both
+	  removed from Perl, and those following bleadperl by rsync
+	  reported test failures for a test which no longer existed.
+	</para>
+      </sidebar>
+
+      <para>
+There are also periodic snapshots of bleadperl released by the
+development pumpking, particularly when some important change
+happens. These are usually available from a variety of URLs, and
+always from <ulink url="ftp://ftp.funet.fi/pub/languages/perl/snap/"></ulink>.
+</para>
+    </sect2>
+  </sect1>
+  <sect1>
+    <title>Debugging Aids</title>
+    <para>
+There are a number of tools available to developers to help them find
+and examine bugs in Perl; these tools are, of course, also useful to
+those creating XS extensions and applications with embedded
+Perl. There are four major categories: Perl modules such as
+<classname>Devel::Peek</classname> which allow us to get information
+about Perl's operation, <literal>perl</literal>'s own debugging mode,
+convenience functions built into <literal>perl</literal> that we can call to get
+debugging information, and external applications.
+</para>
+    <sect2>
+      <title>Debugging Modules</title>
+      <para>
+We've already seen in Chapter 3 how the
+<classname>Devel::Peek</classname> module can dump information about
+SVs; we've also seen the <classname>B::Terse</classname> module for
+dumping the op tree. The op tree diagrams in the previous chapter were
+produced using the CPAN module <classname>B::Tree</classname>. There are
+other modules which we can use to help us get similar information
+</para>
+
+      <sect3>
+	<title>The compiler modules</title>
+	<para>
+Due to the way the compiler works, we can use it to get at a lot of
+information about the op tree. The most extensive information can be
+found using the <classname>B::Debug</classname> module, which dumps
+all the fields of all <type>OP</type>s and <type>SV</type>s in the op
+tree.</para>
+
+<para>
+<classname>B::Deparse</classname> is useful for understanding the
+tokeniser - it attempts to turn the op tree back into usable Perl
+code. For instance, we can see how <literal>perl</literal> implements the
+<userinput>-p</userinput> switch by running the following code:
+
+<screen>
+<prompt>%</prompt> <userinput>perl -MO=Deparse -pe 's/2000/2001/g'</userinput>
+<computeroutput>
+LINE: while (defined($_ = &lt;ARGV&gt;)) {
+    s/2000/2001/g;
+}
+continue {
+    print $_;
+}
+</computeroutput>
+</screen>
+</para>
+
+	<para>
+Another useful module is <classname>B::Graph</classname>, which
+produces the same information as <classname>B::Debug</classname>, but
+does so in the form of a graph.
+</para>
+      </sect3>
+
+      <sect3>
+	<title>Other Modules</title>
+	<para>
+The core module <classname>re</classname> has a debugging mode,
+<userinput>use re 'debug';</userinput>, which traces the execution of
+regular expressions. We can use this, for instance, to examine the
+regular expression engine's backtracking behaviour:
+</para>
+
+	<screen>
+<prompt>%</prompt> <userinput>perl -e 'use re "debug"; "aaa" =~/\w+\d/;'</userinput>
+<computeroutput>
+<![CDATA[
+Compiling REx `\w+\d'
+size 4 first at 2
+   1: PLUS(3)
+   2:   ALNUM(0)
+   3: DIGIT(4)
+   4: END(0)
+stclass `ALNUM' plus minlen 2 
+Matching REx `\w+\d' against `aaa'
+  Setting an EVAL scope, savestack=3
+   0 <> <aaa>             |  1:  PLUS
+                           ALNUM can match 3 times out of 32767...
+  Setting an EVAL scope, savestack=3
+   3 <aaa> <>             |  3:    DIGIT
+                              failed...
+   2 <aa> <a>             |  3:    DIGIT
+                              failed...
+   1 <a> <aa>             |  3:    DIGIT
+                              failed...
+                            failed...
+Freeing REx: `\w+\d'
+]]>
+</computeroutput>
+</screen>
+
+	<para>
+Turning to CPAN, the <classname>Devel::Leak</classname> module can be
+used to detect and trace memory leaks in <literal>perl</literal>.
+</para>
+      </sect3>
+    </sect2>
+    <sect2 id="developing.minusd">
+      <title>The Built-in Debugger : <literal>perl -D</literal></title>
+      <para>
+	If you configure Perl passing the flag
+	<userinput>-Doptimize='-g'</userinput> to
+	<literal>Configure</literal>, it will do two things - first,
+	it will tell the C compiler to add special debugging
+	information to the object files it produces, and we'll see how
+	that's used in a moment, but it will also define the
+	preprocessor macro <constant>DEBUGGING</constant>, which turns
+	on some special debugging options.
+</para>
+
+	<note>
+	  <para>
+	  If you're running <filename>Configure</filename> manually,
+	  you can turn on debugging in the following way:
+<screen>
+<computeroutput>
+By default, perl5 compiles with the -O flag to use the optimizer.
+Alternately, you might want to use the symbolic debugger, which uses
+the -g flag (on traditional Unix systems).  Either flag can be
+specified here.  To use neither flag, specify the word "none".
+
+What optimizer/debugger flag should be used? [-O2] </computeroutput><userinput>-g</userinput>
+</screen>
+</para>
+	</note>
+
+
+      <para>
+This allows us to use the <userinput>-D</userinput> flag on the <literal>perl</literal>
+command line to select the level of debugging we require. The most
+useful debugging options are as follows:
+</para>
+
+      <sect3>
+	<title><userinput>-Ds</userinput></title>
+      <para>
+This turns on stack snapshots, printing a summary of what's on the
+argument stack each time an operation is performed; this is not
+<emphasis>too</emphasis> useful on its own, but is highly recommended
+when combined with the <userinput>-Dt</userinput> switch. Here we can
+see how Perl builds up lists by putting successive values onto the
+stack, and performs array assignment:
+</para>
+
+	<screenco>
+	  <areaspec>
+	    <area coords="9" id="ds.1">
+	    <area coords="12" id="ds.2">
+	    <area coords="13" id="ds.3">
+	    <area coords="14" id="ds.4">
+	    <area coords="15" id="ds.5">
+	  </areaspec>
+	  <screen>
+<prompt>%</prompt> <userinput>perl -Ds -e '@a = (1,2,3)'</userinput>
+
+EXECUTING...
+
+    =>  
+    =>  
+    =>  
+    =>  *  
+    =>  *  IV(1)  
+    =>  *  IV(1)  IV(2)  
+    =>  *  IV(1)  IV(2)  IV(3)  
+    =>  *  IV(1)  IV(2)  IV(3)  *  
+    =>  *  IV(1)  IV(2)  IV(3)  *  GV()  
+    =>  *  IV(1)  IV(2)  IV(3)  *  AV()  
+    =>  
+</screen>
+	  <calloutlist>
+	    <callout arearefs="ds.1">
+	      <para>
+Perl pushes each of the values of the list onto the argument
+stack. The asterisk before the list represents an entry in the mark stack.
+</para>
+	    </callout>
+	    <callout arearefs="ds.2">
+	      <para>
+Once the list has been built up, Perl places another mark between the
+right hand side of an assignment and the left hand side, so it knows
+how many elements are due for assignment.
+</para>
+	    </callout>
+	    <callout arearefs="ds.3">
+	      <para>
+The array is first placed on the stack as a glob, an entry into the
+symbol table.
+</para>
+	    </callout>
+	    <callout arearefs="ds.4">
+	      <para>
+The <function>rv2av</function> operator resolves the glob into an
+<type>AV</type>.
+</para>
+	    </callout>
+
+	    <callout arearefs="ds.5">
+	      <para>
+Finally, once the assignment has been made, everything from the first
+mark is popped off the stack.
+</para>
+	    </callout>
+	  </calloutlist>
+	</screenco>
+      </sect3>
+      <sect3>
+	<title><userinput>-Dt</userinput></title>
+	<para>
+This option traces each individual op as it is executed. Let's see the
+code above again, but this time with a listing of the ops:
+</para>
+
+	<screen>
+<prompt>%</prompt> <userinput>perl -Dst -e '@a = (1,2,3)'</userinput>
+<computeroutput>
+
+EXECUTING...
+
+    =>  
+(-e:0)  enter
+    =>  
+(-e:0)  nextstate
+    =>  
+(-e:1)  pushmark
+    =>  *  
+(-e:1)  const(IV(1))
+    =>  *  IV(1)  
+(-e:1)  const(IV(2))
+    =>  *  IV(1)  IV(2)  
+(-e:1)  const(IV(3))
+    =>  *  IV(1)  IV(2)  IV(3)  
+(-e:1)  pushmark
+    =>  *  IV(1)  IV(2)  IV(3)  *  
+(-e:1)  gv(main::a)
+    =>  *  IV(1)  IV(2)  IV(3)  *  GV()  
+(-e:1)  rv2av
+    =>  *  IV(1)  IV(2)  IV(3)  *  AV()  
+(-e:1)  aassign
+    =>  
+(-e:1)  leave
+</computeroutput>
+</screen>
+      </sect3>
+      <sect3>
+	<title><userinput>-Dr</userinput></title>
+	<para>
+The <userinput>-Dr</userinput> flag is exactly identical to the
+<userinput>use re 'debug';</userinput> module discussed above.
+</para>
+      </sect3>
+      <sect3>
+	<title><userinput>-Dl</userinput>
+</title>
+	<para>
+This option reports when <literal>perl</literal> reaches an <function>ENTER</function> or
+<function>LEAVE</function> statement, and reports on which line and in
+which file the statement occurred. 
+</para>
+      </sect3>
+      <sect3>
+	<title><userinput>-Dx</userinput></title>
+	<para>
+This is roughly equivalent to <classname>B::Terse</classname> - it
+produces a dump of the op tree using the <function>op_dump</function>
+function described below. It's a handy compromise between
+<classname>B::Terse</classname> and <classname>B::Debug</classname>.
+</para>
+      </sect3>
+      <sect3>
+	<title><userinput>-Do</userinput></title>
+	<para>
+This turns on reporting of method resolution: that is, what happens
+when Perl calls a method on an object or class; it tells you when, for
+instance, <methodname>DESTROY</methodname> methods are called, as well
+as what happens during inheritance lookups.
+</para>
+      </sect3>
+    </sect2>
+    <sect2>
+      <title>Debugging Functions</title>
+      <para>
+In addition to this, the Perl core itself defines a number of
+functions to aid debugging the internal goings-on. These can either be
+called from debugging sections of your own code, or from a source
+level debugger. (see below)
+</para>
+
+      <sect3>
+	<title><function>sv_dump</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>void <function>sv_dump</function></funcdef>
+	    <paramdef>SV* sv</paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+This is roughly equivalent to the <classname>Devel::Peek</classname>
+module - it allows you to inspect any of Perl's data types. The
+principle differences between this and
+<classname>Devel::Peek</classname> is that it is not recursive - for
+instance, a reference will be dumped like this:
+
+<screen>
+<computeroutput>
+SV = RV(0x814fd10) at 0x814ec80
+  REFCNT = 1
+  FLAGS = (ROK)
+  RV = 0x814ec5c
+</computeroutput>
+</screen>
+
+and its referent is not automatically dumped. However, it does allow
+you to get at values that are not attached to a variable, such as
+arrays and scalars used to hold data internal to <literal>perl</literal>.
+</para>
+      </sect3>
+      <sect3>
+	<title><function>op_dump</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>void <function>op_dump</function></funcdef>
+	    <paramdef>OP* op</paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+The <userinput>-Dx</userinput> debugging option is implemented,
+essentially, by calling <function>op_dump(PL_mainroot)</function>. It
+takes an op, and lists the op's type, flags, important additional
+fields and recursively calls itself on the op's children.
+</para>
+      </sect3>
+
+      <sect3>
+	<title><function>dump_sub</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>void <function>dump_sub</function></funcdef>
+	    <paramdef>GV* gv</paramdef>
+	  </funcprototype>
+        </funcsynopsis>
+	<para>
+This extracts the <type>CV</type> from a glob and runs
+<function>op_dump</function> on the root of its op tree.
+</para>
+      </sect3>
+    </sect2>
+    <sect2>
+      <title>External Debuggers</title>
+      <para>
+
+There's another way to debug your code, which is usually more useful 
+when you're fiddling around in C. A <firstterm>source level
+debugger</firstterm> allows you to step through your C code line by
+line or function by function, and execute C code on the fly, just like
+you'd do with the built-in Perl debugger.
+</para>
+
+      <para>
+Source level debuggers come in many shapes and sizes: if you're
+working in a graphical environment such as Microsoft Visual Studio,
+you may find that there's a debugging mode built into
+it. Just like with compilers, there are also command-line versions,
+and we're going to look at another free tool, the GNU Debugger,
+(<command>gdb</command>) although much of what we say will be more or
+less applicable to other similar debuggers, such as DDD.
+</para>
+
+      <sect3>
+	<title>Compiling for debugging</title>
+	<para>
+Unfortunately, before you can use the debugger on a C program, you
+must compile it with special options. As we've seen above, the
+debugging option (usually <option>-g</option> on command-line
+compilers) embeds information into the binary detailing the file name
+and line number for each operation, so that the debugger can, for
+instance, stop at a specific line in a C source file.
+</para>
+
+	<para>
+So, before using the debugger, you must recompile Perl with the
+<userinput>-Doptimize='-g'</userinput> option to
+<filename>Configure</filename>, as shown in <xref
+linkend="developing.minusd">
+</para>
+      </sect3>
+
+      <sect3>
+	<title>Invoking the debugger</title>
+
+	<para>
+We'll assume you're using <command>gdb</command>, and you've compiled
+Perl with the <option>-g</option> flag. If you type <userinput>gdb
+perl</userinput> in the directory in which you built Perl, you should
+see the following:
+
+<screen>
+<prompt>% </prompt> <userinput>gdb perl</userinput>
+<computeroutput>
+GNU gdb 5.0
+Copyright 2000 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i686-pc-linux-gnu"...
+(gdb) 
+</computeroutput>
+</screen>
+</para>
+
+	<para>
+	  If, however, you see the words <computeroutput>(no debugging
+	  symbols found)</computeroutput>, you're either in the wrong
+	  place or you didn't compile Perl with debugging support.
+</para>
+
+	<para>
+	  You can type <userinput>help</userinput> at any time to get
+	  a summary of the commands, or <userinput>quit</userinput>
+	  (or just press
+<keycombo>
+	    <keycap>Ctrl</keycap>
+	    <keycap>D</keycap>
+	  </keycombo>) to leave the debugger.
+</para>
+
+	<para>
+	  You can run <literal>perl</literal> without any intervention from the debugger
+	  by simply typing <userinput>run</userinput>; this is
+	  equivalent to executing <literal>perl</literal> with no command line options,
+	  and means that it will take a program from standard input.
+	</para>
+
+	<para>
+	  To pass command line options to <literal>perl</literal>, put them after the
+	  <userinput>run</userinput> command, like this:
+
+	  <screen>
+<computeroutput>(gdb)</computeroutput> <userinput>run -Ilib -MDevel::Peek -e '$a="X"; $a++; Dump($a)'</userinput>
+<computeroutput>
+Starting program: /home/simon/patchbay/perl/perl -Ilib -MDevel::Peek -e '$a="X"; $a++; Dump($a)'
+SV = PV(0x8146fdc) at 0x8150a18
+  REFCNT = 1
+  FLAGS = (POK,pPOK)
+  PV = 0x8154620 "Y"\0
+  CUR = 1
+  LEN = 2
+
+Program exited normally.
+</computeroutput>
+</screen>
+	</para>
+      </sect3>
+      <sect3>
+	<title>Setting breakpoints</title>
+	<para>
+	  Running through a program normally isn't very exciting,
+	  though. The most important thing you'll want to do is to
+	  choose a place to freeze execution of the program, so that
+	  you can examine further what's going on at that point.
+	</para>
+	<para>
+	  The <userinput>break</userinput> command is used to set a
+	  breakpoint, a point in the program at which the debugger
+	  will halt execution and bring us back to the
+	  <computeroutput>(gdb)</computeroutput> prompt.
+	</para>
+
+	<para>
+	  <userinput>break</userinput> can be given either the name of
+	  a function, or a location in the source code of the form
+	  <userinput><replaceable>filename.c</replaceable>:<replaceable>lineno</replaceable></userinput>. For
+	  instance, in the version of Perl installed here, the main op
+	  despatch code is at <userinput>run.c:53</userinput>:
+
+	  <screen>
+<computeroutput>(gdb)</computeroutput> <userinput>break run.c:53</userinput>
+<computeroutput>
+Breakpoint 1 at 0x80ba331: file run.c, line 53.
+</computeroutput>
+</screen>
+
+	  This sets breakpoint number 1, which will be triggered when
+	  execution gets to line 53 of <filename>run.c</filename>.
+	</para>
+	<note>
+	  <title>Setting breakpoints</title>
+	  <para>
+	    Blank lines, or lines containing comments or preprocessor
+	    directives will never get executed, but if you do set a
+	    breakpoint on them, the debugger should stop at the next
+	    line containing code. This also applies for sections of
+	    code which are <literal>#ifdef</literal>'d out.
+	  </para>
+	  <para>
+	    If you give <userinput>break</userinput> a function name,
+	    be sure to give the name in the <literal>Perl_</literal>
+	    namespace: that is, <function>Perl_runops_debug</function>
+	    instead of <function>runops_debug</function>.
+	  </para>
+	</note>
+
+	<para>
+	  Now when you use <userinput>run</userinput>, execution will
+	  halt when it gets to the specified place, and
+	  <command>gdb</command> will display the number of the
+	  breakpoint that was triggered, and the line of code in
+	  question for you:
+
+	  <screen>
+<computeroutput>(gdb)</computeroutput> <userinput>run -e1</userinput>
+<computeroutput>
+Starting program: /home/simon/patchbay/perl/perl -e1
+
+Breakpoint 1, Perl_runops_debug () at run.c:53
+53	    } while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX)));
+</computeroutput>
+</screen>
+	</para>
+
+	<para>
+	  You can now use the backtrace command,
+	  <userinput>bt</userinput>, to examine the call stack and
+	  find out how you got there: (<userinput>where</userinput> is
+	  also available as a synonym for <userinput>bt</userinput>)
+	  <screen>
+<computeroutput>(gdb)</computeroutput> <userinput>bt</userinput>
+<computeroutput>
+#0  Perl_runops_debug () at run.c:53
+#1  0x805dc9f in S_run_body (oldscope=1) at perl.c:1458
+#2  0x805d871 in perl_run (my_perl=0x8146b98) at perl.c:1380
+#3  0x805a4d5 in main (argc=2, argv=0xbffff8cc, env=0xbffff8d8)
+    at perlmain.c:52
+#4  0x40076dcc in __libc_start_main () from /lib/libc.so.6
+	    </computeroutput>
+</screen>
+</para>
+
+	<para>
+	  This tells us that we're currently in
+	  <function>Perl_runops_debug</function>, after being called
+	  by <function>S_run_body</function> on line 1380 of
+	  <filename>perl.c</filename>. <command>gdb</command> also
+	  displays the value of the arguments to each function,
+	  although many of them (those given as hexadecimal numbers)
+	  are pointers.
+        </para>
+
+	<para>
+	  Execution can be restarted by typing
+	  <userinput>continue</userinput>; if the code containing a
+	  breakpoint is executed again, the debugger will halt once
+	  more. If not, the program will run until termination.
+	</para>
+
+	<para>
+	  You may set multiple breakpoints, simply by issuing more
+	  <userinput>break</userinput> commands. If multiple
+	  breakpoints are set, the debugger will stop each time
+	  execution reaches any of the breakpoints in force.
+	</para>
+	<para>
+	  Unwanted breakpoints can be deleted using the
+	  <userinput>delete</userinput> command; on its own,
+	  <userinput>delete</userinput> will delete all
+	  breakpoints. To delete a given breakpoint, use
+	  <userinput>delete <replaceable>n</replaceable></userinput>
+	  where <replaceable>n</replaceable> is the number of the
+	  breakpoint.
+	</para>
+	<para>
+	  To temporarily turn off a breakpoint, use the
+	  <userinput>disable</userinput> and
+	  <userinput>enable</userinput> commands.
+	</para>
+
+	<para>
+	  Good breakpoints to choose when debugging <literal>perl</literal> include the
+	  main op despatch code shown above,
+	  <function>main</function>,
+	  <function>S_parse_body</function>,
+	  <function>perl_construct</function>,
+	  <function>perl_destruct</function> and
+	  <function>Perl_yyparse</function>. (Not for the faint of heart.)
+	</para>
+      </sect3>
+      <sect3>
+	<title>Stepping through a program</title>
+	<para>
+	  While it's perfectly possible to work out the flow of
+	  execution just by using breakpoints, it's a lot easier to
+	  watch the statements as they get executed. The key commands
+	  for this are <userinput>step</userinput>,
+	  <userinput>next</userinput>, and <userinput>finish</userinput>.
+</para>
+
+	<para>
+	  <userinput>step</userinput> traces the flow of execution
+	  step by step; let's see what happens when we break at the
+	  main op despatch look and step through execution:
+	</para>
+
+<screen>
+<computeroutput>(gdb)</computeroutput> <userinput>run -e1</userinput>
+<computeroutput>
+Starting program: /home/simon/patchbay/perl/perl -e1
+
+Breakpoint 1, Perl_runops_debug () at run.c:53
+53	    } while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX)));
+(gdb) <userinput>step</userinput>
+
+Perl_pp_enter () at pp_hot.c:1587
+1587	    djSP;
+(gdb) <userinput>step</userinput>
+1589	    I32 gimme = OP_GIMME(PL_op, -1);
+(gdb)
+1591	    if (gimme == -1) {
+(gdb)
+1592		if (cxstack_ix >= 0)
+(gdb)
+1595		    gimme = G_SCALAR;
+</computeroutput>
+</screen>
+
+	<tip>
+	  <para>Pressing <keycap>Return</keycap> repeats the last command.</para>
+	</tip>
+
+	<para>
+	  As we <userinput>step</userinput>ped into the first op,
+	  <function>enter</function>, <command>gdb</command> loaded up
+	  <filename>pp_hot.c</filename> and entered
+	  <function>Perl_pp_enter</function> function. The function in
+	  question begins like this:
+	  <programlisting>
+  1585  PP(pp_enter)
+  1586  {
+  1587      djSP;
+  1588      register PERL_CONTEXT *cx;
+  1589      I32 gimme = OP_GIMME(PL_op, -1);
+  1590  
+  1591      if (gimme == -1) {
+  1592          if (cxstack_ix >= 0)
+  1593              gimme = cxstack[cxstack_ix].blk_gimme;
+  1594          else
+  1595              gimme = G_SCALAR;
+  1596      }
+  1597  ...
+</programlisting>
+	</para>
+
+	<para>
+	  <command>gdb</command> first stopped at line 1587, which is
+	  the first line in the function. The first three lines of the
+	  function are, as you might expect, variable
+	  definitions. <command>gdb</command> does not normally stop
+	  on variable definitions, unless they are also
+	  assignments. <constant>djSP</constant> happens to be a macro
+	  which expands to
+
+	  <programlisting>
+register SV **sp = PL_stack_sp
+</programlisting>
+
+	  declaring a local copy of the stack pointer. The next line,
+	  however, is not an assignment, which is why
+	  <userinput>step</userinput> causes <command>gdb</command> to
+	  move on to line 1589. <command>gdb</command> also skips
+	  blank space, so the next line it stops on is 1591.
+	</para>
+	<para>
+	  Since the program enters the <literal>if</literal>
+	  statement, we know the <varname>gimme</varname>, the context
+	  in which this piece of Perl is being executed, is
+	  <literal>-1</literal>, signifying `not yet known'. Next we
+	  go from the inner <literal>if</literal> statement to the
+	  <literal>else</literal> branch, meaning that
+	  <varname>cx_stack_ix</varname>, the index into the context
+	  stack, is less than zero. Hence <varname>gimme</varname> is
+	  set to <constant>G_SCALAR</constant>.
+</para>
+	<para>
+	  What does this mean in Perl terms? The context stack holds
+	  the context for each block; when you call a sub in list
+	  context, an entry is popped onto the context stack
+	  signifying this. This allows the code which implements
+	  <literal>return</literal> to determine which context is
+	  expected. Since we are in the outermost block of the
+	  program, there are no entries on the context stack at the
+	  moment. The code we have just executed sets the context of
+	  the outer block to scalar context. (Unfortunately,
+	  <function>wantarray</function> is only useful inside a
+	  subroutine, so the usual way of demonstrating this won't
+	  work. You'll just have to take our word for it.)
+</para>
+
+	<para>
+	  Sometimes <userinput>step</userinput> is too slow-going, and
+	  you don't want to descend into a certain function and
+	  execute every line in it. For instance, you'll notice after
+	  a while that <function>ENTER</function> and
+	  <function>SAVETMPS</function> often appear next to each
+	  other and cause <function>Perl_push_scope</function> and
+	  <function>Perl_save_int</function> to be executed. If you're
+	  not interested in debugging those functions, you can skip
+	  over them using the <userinput>next</userinput> command;
+	  they will still be executed, but the debugger will not trace
+	  their execution:
+
+	  <screen>
+<computeroutput>
+Breakpoint 2, Perl_pp_enter () at pp_hot.c:1598
+1598	    ENTER;
+(gdb) <userinput>next</userinput>
+1600	    SAVETMPS;
+(gdb) 
+1601	    PUSHBLOCK(cx, CXt_BLOCK, SP);
+(gdb) 
+1603	    RETURN;
+(gdb) 
+</computeroutput>
+</screen>
+</para>
+
+	<para>
+	  Alternatively, you can run the current function to its
+	  conclusion without tracing it using the
+	  <userinput>finish</userinput> command.
+
+	  <screen>
+	    <computeroutput>
+(gdb) <userinput>step</userinput>
+Perl_runops_debug () at run.c:42
+42		PERL_ASYNC_CHECK();
+(gdb) 
+43		if (PL_debug) {
+(gdb) 
+53	    } while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX)));
+(gdb) 
+Perl_pp_nextstate () at pp_hot.c:37
+37	    PL_curcop = (COP*)PL_op;
+(gdb) <userinput>finish</userinput>
+Run till exit from #0  Perl_pp_nextstate () at pp_hot.c:37
+0x80ba64b in Perl_runops_debug () at run.c:53
+53	    } while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX)));
+Value returned is $1 = (OP *) 0x814cb68
+</computeroutput>
+</screen>
+
+	  Here we step over the main op despatch loop until
+	  <function>Perl_pp_nextstate</function> is called. Since
+	  we're not particularly interested in that function, we call
+	  <userinput>finish</userinput> to let it run. The debugger
+	  then confirms that it's running
+	  <function>Perl_pp_nextstate</function> until the function
+	  exits, displays where it has returned to, and the value
+	  returned from the function.
+</para>
+	<tip>
+	  <title>Emacs makes it easy</title>
+	  <para>
+	    If you're a user of the <command>emacs</command> editor,
+	    you might find the <literal>gdb</literal> major mode to be
+	    extremely helpful; it automatically opens any source files
+	    that <command>gdb</command> refers to, and can trace the
+	    flow of control in the source buffers, making it very easy
+	    for you to see what's going on around the source that's
+	    currently being executed.
+	  </para>
+	</tip>
+	<tip>
+	  <title>Alternatives to <command>gdb</command></title>
+	  <para>
+	    If you're not a fan of command-line debugging, you may
+	    wish to investigate alternatives to
+	    <command>gdb</command>. For Windows users, Microsoft
+	    Visual C can't be beaten; for Unix users, Tim recommends
+	    <command>ddd</command>, which is a graphical front-end to
+	    <command>gdb</command>. <command>ddd</command> extends the
+	    usual source-navigation functions of a debugger with an
+	    interactive graphical display of data, including arrays
+	    and structures.
+	  </para>
+	</tip>
+      </sect3>
+      <sect3>
+	<title>Evaluating expressions</title>
+	<para>
+	  We can now perform most of the debugging we need with ease,
+	  but there's one more feature of <command>gdb</command> that
+	  makes it even easier. The <userinput>print</userinput>
+	  command allows you to execute C expressions on the fly and
+	  display their results.
+	</para>
+
+	<para>
+	  There is, unfortunately, one drawback;
+	  <command>gdb</command> doesn't know anything about
+	  pre-processor macros, so you need to expand the macros
+	  yourself. For instance, to find the reference count of an
+	  SV, you can't say
+
+	  <screen>
+<computeroutput>
+(gdb) <userinput>print SvREFCNT(sv)</userinput>
+No symbol "SvREFCNT" in current context.
+</computeroutput>
+</screen>
+	  Instead, you have to say:
+	  <screen>
+<computeroutput>
+(gdb) <userinput>print sv->sv_refcnt</userinput>
+$1
+</computeroutput>
+</screen>
+	  Or even, to look at the contents of the SV,
+	  <screen>
+<computeroutput>
+(gdb) <userinput>print *sv</userinput>
+$2 = {sv_any = 0x8147a10, sv_refcnt = 1, sv_flags = 536870923}
+</computeroutput>
+</screen>
+	</para>
+
+	<para>
+	  You may also use <userinput>print</userinput> to call C
+	  functions, such as the debugging functions mentioned above:
+
+	  <screen>
+	    <computeroutput>
+(gdb) <userinput>print Perl_sv_dump(sv)</userinput>
+SV = PV(0x8146d14) at 0x8150824
+  REFCNT = 1
+  FLAGS = (POK,READONLY,pPOK)
+  PV = 0x8151968 "hello"\0
+  CUR = 5
+  LEN = 6
+$9 = void
+</computeroutput>
+</screen>
+
+	  Using these functions in conjunction with the
+	  execution-tracing commands of <command>gdb</command> should
+	  allow you to examine almost every area of Perl's internals.
+</para>
+      </sect3>
+      <sect3>
+	<title>Debugging XS code</title>
+	<para>
+	  There's one little wrinkle, however, when it comes to
+	  debugging XS modules. The first problem with XS is that the
+	  modules are usually dynamically loaded into memory; that
+	  means that when <literal>perl</literal> starts, the functions aren't loaded,
+	  and that means that when <command>gdb</command> starts, it
+	  can't find them.
+</para>
+
+	<para>
+	  The solution to this is to choose a breakpoint after the XS
+	  module has been dynamically loaded; a good place is
+	  <function>S_run_body</function> - here the
+	  <userinput>BEGIN</userinput> blocks have been processed and
+	  hence all <userinput>use</userinput>'d modules have been
+	  loaded. This is just before the main part of the script is
+	  executed. If this is too late for your debugging, another
+	  good place to stop is inside the dynamic loading module,
+	  <classname>DynaLoader</classname>. <function>XS_DynaLoader_dl_load_file</function>
+	  is called for each module that needs to be dynamically loaded.
+	</para>
+
+	<note>
+	  <para>
+	    Don't forget that to effectively debug an XS module,
+	    you'll need to recompile it with the debugging flag,
+	    <userinput>-g</userinput>. The "official" way to do this
+	    is to run <filename>Makefile.PL</filename> as follows:
+
+	    <screen>
+<prompt>%</prompt> <userinput>perl Makefile.PL OPTIMIZE=-g</userinput>
+</screen>
+
+	    However, it's also possible to hack the
+	    <userinput>OPTIMIZE=</userinput> line in the
+	    <filename>Makefile</filename> itself. (But don't tell
+	    anyone I said that.)
+	  </para>
+	</note>
+
+	<para>
+	  The next small problem is that the function names of XS
+	  functions are mangled from the names you give them in the
+	  <filename>.xs</filename> file. You should look at the
+	  <filename>.c</filename> file produced by
+	  <command>xsubpp</command> to determine the real function name.
+	</para>
+
+	<para>
+	  For instance, the XS function
+	  <function>sdbm_TIEHASH</function> in the XS code for the
+	  <classname>SDBM_File</classname> becomes
+	  <function>XS_SDBM_File_TIEHASH</function>.
+	</para>
+
+	<para>
+	  The rules for this mangling are regular (<xref linkend="advxs.inside">):
+
+	  <itemizedlist>
+	    <listitem>
+	      <para>The <userinput>PREFIX</userinput> given in the XS
+		file is removed from the function name. Hence,
+		<function>sdbm_</function> is stripped off to leave
+		<function>TIEHASH</function>. </para>
+	    </listitem>
+	    <listitem>
+	      <para>
+		The <userinput>PACKAGE</userinput> name
+		(<userinput>SDBM_File</userinput>) undergoes
+		"C-ification" (Any package separators,
+		<userinput>::</userinput>, are converted to
+		underscores) and this is added to the beginning of the
+		name: <function>SDBM_File_TIEHASH</function>
+	      </para>
+	    </listitem>
+	    <listitem>
+	      <para>
+		Finally, <function>XS_</function> is prefixed to the
+		name to give <function>XS_SDBM_File_TIEHASH</function>.
+	      </para>
+	    </listitem>
+	  </itemizedlist>
+	</para>
+      </sect3>
+    </sect2>
+  </sect1>
+  <sect1>
+    <title>Creating a Patch</title>
+    <sect2>
+      <title>How to Solve Problems</title>
+      <para>
+There are a few standard design goals that you should hold in mind
+when considering how to approach a Perl patch; there's also quite a
+lot of unwritten folklore that explains why certain patches `feel'
+better than others. Here is an incomplete list of some of the more
+important principles that we've picked up over the years.
+</para>
+
+      <itemizedlist>
+	<listitem>
+	  <para>
+The most important rule of all: you may not break old code. Perl 5
+can still quite happily run some code that is positively ancient, even
+dating back to the Perl 1 days; we pride ourselves on backwards
+compatibility. Hence, nothing that you do should break that compatibility.
+</para>
+	  <para>
+This has a few direct implications: adding new syntax is
+tricky. Adding new operators is pretty much right out - if I wanted to
+introduce a <function>chip</function> operator which took a character
+off the beginning of a string, that would break any code which defined
+a <function>chip</function> subroutine itself. 
+</para>
+	</listitem>
+	<listitem>
+	  <para>
+Solve problems as generally as possible - platform specific
+<userinput>ifdef</userinput>s are frowned upon unless absolutely and
+obviously necessary. Try to avoid repetition of code. If you've got a
+good, general routine that can be used in other places of the Perl
+core, move it out to a separate function and change the rest of the
+core to use it.
+</para>
+	  <para>
+For instance, there needed to be a way for Perl to perform arbitrary
+transformations on incoming data - for example, to mark it as
+UTF8-encoded, or convert it between different character encodings. The
+intial idea was to extend the source filter mechanism to apply not
+just to the source file input, but also to any filehandle. However,
+the more general solution was an extension of the Perl IO abstraction
+to a `layered' model where transformation functions could be applied
+to various layers; then source filters could be re-implemented in
+terms of this new IO system.
+</para>
+	</listitem>
+	<listitem>
+	  <para>
+Change as <emphasis>little</emphasis> as possible to get the job done,
+especially when you're not well-known as a solid porter.  Big sweeping
+changes scare people, whether or not they're correct. It's a lot
+easier to check a ten-line patch for potential bugs than a
+hundred-line patch.
+</para>
+	</listitem>
+	<listitem>
+	  <para>
+Don't do it in the core unless it needs to be done in the core. If you
+can do it in a Perl module or an XS module, it's unlikely that you
+need to do it in the core.
+</para>
+	  <para>
+As an example, DBM capability was moved out of the core into a bunch
+of XS modules; this also had the advantage that you could switch
+between different DBM libraries at runtime, and you had the
+extensibility of the <function>tie</function> system that could be
+used for things other than DBMs.
+</para>
+	</listitem>
+	<listitem>
+	  <para>
+Try to avoid introducing restrictions - even on things you haven't
+thought of yet. Always leave the door open for more interesting work
+along the same lines.
+</para>
+	  <para>
+A good example of this is lvalue subroutines, which were introduced in
+Perl 5.6.0 - once you have lvalue subroutines, why not lvalue
+method calls or even lvalue overloaded operators?
+</para>
+	</listitem>
+      </itemizedlist>
+      <para>
+Some of the goals, however, are just things which you have to pick up
+in time and/or may depend on the outlook of the pumpking and any major
+work that's going on at the time - for instance, during the
+reorganisation of the IO system mentioned above, any file handling
+patches would be carefully scrutinised to make sure they wouldn't have
+to be rewritten once the new system was in place. Hence, it's not
+really possible to give hard-and-fast design goals, but if you stick to
+the above, you won't go far wrong.
+</para>
+    </sect2>
+    <sect2>
+      <title>Autogenerated files</title>
+      <para>
+One thing you need to be careful of is that a number of files should
+not be patched directly, since they are generated from other (usually
+Perl) programs.
+</para>
+      <para>
+Most of these files are clearly marked, but the most important one
+bears repeating: if you add a new function to the core, you must add
+an entry to the table at the end of
+<filename>embed.pl</filename>. This ensures a number of things:
+firstly, that a correct function prototype is generated and placed in
+<filename>protos.h</filename>; secondly, that any documentation for
+that function is automatically extracted, and thirdly, that the
+namespace for the function is automatically handled. (See the note
+below)
+</para>
+      <para>
+The syntax for entries in the table is explained in the documentation
+file <filename>perlguts.pod</filename>
+</para>
+      <note>
+	<para>
+
+Perl's internal functions are carefully named so that when Perl is
+embedded in another C program, they do not override any functions that
+the C program defines. Hence, all internal functions should be named
+<function>Perl_something</function>, apart from static functions which
+are by convention named
+<function>S_something</function>. <filename>embed.h</filename> uses a
+complicated system of automatically-generated
+<userinput>#define</userinput>s to allow you to call your function as
+<function>something()</function> inside the core and in XSUBs, but
+<function>Perl_something</function> must be used by embedders. 
+</para>
+      </note>
+
+      <para>
+You must remember to rerun <filename>embed.pl</filename> after doing
+this. The Make target <userinput>regen_headers</userinput> will call
+all the Perl programs which generate other files.
+</para>
+      <para>
+	A special exception is <filename>perly.c</filename>, which is
+	generated from running <command>byacc</command> on
+	<filename>perly.y</filename> and then being fixed up with a patch. In
+	the <emphasis>extraordinarily</emphasis> unlikely event that you need
+	to fiddle with the Perl grammar in <filename>perly.y</filename>, you
+	can run the Make target <userinput>run_byacc</userinput> to call
+	<command>byacc</command> and then fix up the resulting C file; if you
+	are changing <filename>perly.y</filename>, it's polite to drop
+	the VMS porters mailing list (vmsperl@perl.org) a copy of the
+	patch, as they use a different way of generating <filename>perly.c</filename>.
+      </para>
+
+      <para>
+For changes which involve autogenerated files, such as adding a
+function to the core or changing a function's prototype, it's only
+necessary to provide a patch for the generating program and leave a
+note to the effect that <userinput>regen_headers</userinput> should be
+run. You should not include, for instance, a patch to
+<filename>protos.h</filename>.
+</para>
+    </sect2>
+    <sect2>
+      <title>The Patch Itself</title>
+      <para>
+Patching styles vary, but the recommended style for Perl is a unified
+diff. If you're changing a small number of files, copy, say,
+<filename>sv.c</filename> to <filename>sv.c~</filename>, make your
+changes, and then run:
+<screen>
+<prompt>%</prompt> <userinput>diff -u <replaceable>sv.c~</replaceable> <replaceable>sv.c</replaceable> > <replaceable>/tmp/patch</replaceable> </userinput>
+<prompt>%</prompt> <userinput>diff -u <replaceable>sv.h~</replaceable> <replaceable>sv.h</replaceable> >> <replaceable>/tmp/patch</replaceable> </userinput>
+</screen>
+and so on for each file you change.
+</para>
+      <para>
+If you are doing this, remember to run <command>diff</command> from
+the root of the Perl source directory. Hence, if you're patching XS
+files in <filename>ext/</filename>, you should say:
+<screen>
+<prompt>%</prompt> <userinput>diff -u <replaceable>ext/Devel/Peek/Peek.xs~</replaceable> <replaceable>ext/Devel/Peek/Peek.xs</replaceable> >> <replaceable>/tmp/patch</replaceable> </userinput>
+</screen>
+</para>
+
+      <para>
+For larger patches, you may find it easier to do something like this:
+
+<screen>
+<prompt>/home/me/work %</prompt> <userinput>rsync -avz rsync://ftp.linux.activestate.com/perl-current/ bleadperl</userinput>
+<prompt>/home/me/work %</prompt> <userinput>cp -R bleadperl myperl</userinput>
+<prompt>/home/me/work %</prompt> <userinput>cd myperl</userinput>
+<prompt>/home/me/work/myperl %</prompt> <replaceable>Make your changes...</replaceable>
+<prompt>/home/me/work/myperl %</prompt> <userinput>cd ..</userinput>
+<prompt>/home/me/work %</prompt> <userinput>diff -ruN bleadperl myperl > /tmp/patch</userinput>
+</screen>
+
+	This will create a patch which turns the current bleadperl
+	into your personal perl source tree. If you do this, please
+	remember to prune your patch for autogenerated files and also
+	things which do not belong in the source distribution. (Any
+	test data you have used, or messages about binary files.)
+</para>
+      <note>
+	<title><command>makepatch</command></title>
+	<para>
+	  An alternative tool which may make patching easier is Johan
+	  Vroman's <command>makepatch</command>, available from
+	  <filename>$CPAN/authors/id/JV/</filename>. This automates
+	  many of the above steps. Some swear by it, but some of us
+	  are stuck in their ways and do things the old way...
+	</para>
+      </note>
+    </sect2>
+    <sect2>
+      <title>Documentation</title>
+      <para>
+	If you change a feature of Perl which is visible to the user,
+	you must, must, must update the documentation. Patches are not
+	complete if they do not contain documentation.
+      </para>
+      <para>
+	Remember that if you introduce a new warning or error, you
+	need to document it in <filename>pod/perldiag.pod</filename>.
+</para>
+      <para>
+	Perl 5.6.0 introduced a system for providing documentation for
+	internal functions, similar to Java's
+	<command>javadoc</command>. This `apidoc' is extracted by
+	<filename>embed.pl</filename> and ends up in two files:
+	<filename>pod/perlapi.pod</filename> is the file containing
+	documentation for functions which are deemed suitable for XS
+	authors<footnote> <para>Chapter 4 of this book was developed
+	by starting from <filename>pod/perlapi.pod</filename>, and, in
+	fact, we contributed back some pieces of chapter 4 as
+	apidoc.</para> </footnote>, and
+	<filename>pod/perlintern.pod</filename> contains the
+	documentation for all other functions. (`Internal' functions)
+</para>
+
+<remark>If <filename>perlapi.pod</filename> is the XS interface
+shouldn't PUSH[inpu] and XPUSH[inpu] be moved to
+<filename>perlintern.pod</filename> folowing the recent comment by
+Sarathay that XS writers should not use them (I added comment to that
+effect in advxs chapter.</remark>
+
+      <para>
+apidoc is simply POD embedded in C comments; you should be able to
+pick up how it is used by looking around the various C files. If you
+add apidoc to a function, you should turn on the <literal>d</literal>
+flag in that function's <filename>embed.pl</filename> entry.
+</para>
+    </sect2>
+    <sect2>
+      <title>Testing</title>
+      <para>
+The <filename>t/</filename> directory in the Perl source tree contains
+at great many (294, at last count) regression test scripts which
+ensure that Perl is behaving as it should. When you change something,
+you should make sure that your changes have not caused any of the
+scripts to break - they have been specially designed to try out as
+many unexpected interactions as possible. 
+</para>
+      <para>
+You should also add tests to the suite if you change a feature, so
+that your changes don't get disturbed by future patching
+activity. Tests are in the ordinary style used for modules, so
+remember to update the <literal>"1..n"</literal> line at the top of
+the test.
+</para>
+    </sect2>
+    <sect2>
+      <title>Submitting your patch</title>
+      <para>
+Once you've put together a patch, which includes documentation and new
+tests, it's time to submit it to P5P. Your subject line should include
+the tag <literal>[PATCH]</literal>, with optionally a version number
+or name, or the name of the file you're patching: <literal>[PATCH
+bleadperl]</literal>, or <literal>[PATCH sv.c]</literal>. This is to
+allow the pumpking to easily distinguish possible patches to be
+integrated from the usual list discussion. You should also put a brief
+description of what you're solving on the subject line: for instance,
+<literal>[PATCH blead] Fix B::Terse indentation</literal>. 
+</para>
+      <para>
+The body of your mail should be a brief discussion of the problem
+(just some Perl code which demonstrates the problem is adequate) and
+how you've solved it. Then insert your patch directly into the body of
+the mail - try to avoid sending it as an attachment. Also, be careful
+with cut-and-pasting your patch in, because this may corrupt line
+wrapping or convert tabs to spaces.
+</para>
+      <para>
+Once you're ready, take a deep breath, and hit send!
+</para>
+    </sect2>
+  </sect1>
+  <sect1>
+    <title>Perl 6 : The Future of Perl</title>
+    <sect2>
+      <title>A History</title>
+      <para>
+	At the Perl Conference in July 2000, Chip Salzenburg called a
+	`brainstorming session' meeting of some eminent members of the
+	Perl community to discuss the state of Perl. Chip wanted some
+	form of `Perl Constitution' to resolve some perceived problems
+	in Perl 5 development, but Jon Orwant suggested (in a
+	particularly vivid and colourful way) that there were deeper
+	problems in the state of Perl and the Perl community that
+	should be fixed by a completely new version of Perl.
+      </para>
+      <para>
+	The majority consensus was that this was a good idea, and
+	Larry picked up on it. It was then presented to the main
+	perl5-porters meeting the same afternoon, and various people
+	offered to take some roles in the development team. Larry
+	announced the start of Perl 6 development in his keynote
+	`State of the Onion' address the following day.
+      </para>
+
+      <para>
+	There was then a period of feeling around for the best way to
+	organise the development structure of Perl 6; the
+	single-mailing-list model of Perl 5 was prone to infighting,
+	and the pumpking system was problematic as Perl was beginning
+	to get too big for a single person to maintain and cases of
+	`pumpking burnout' too common.
+      </para>
+
+      <para>
+	The concensus was that design should be split between a number
+	of `working groups', and these would each have a chair. The
+	first two working groups were perl6-language and
+	perl6-internals, for language design proposals and
+	implementation design respectively. The busier working groups
+	spawned sub-groups for discussion of more focused topics, and
+	developers were encouraged to express their desires for
+	language change in formal `Requests for Changes'.
+</para>
+
+      <para>
+	The comments stage ended on October 1st, 2000, after 361 RFCs were
+	submitted. These went to Larry, who sat down to the gruelling task of
+	reading each one to assess its merits. Larry then responded by
+	unfolding the language design in a series of articles called
+	"Apocalypses". Damian Conway, who through generous sponsorship
+	has been working full-time for the Perl community, has been
+	assisting Larry, and has also produced explanatory articles
+	called "Exegeses". This process will continue well into 2002.
+      </para>
+
+      <para>
+	On the other side of things, the Perl 6 internals started an
+	almost independent sub-project, to write a generic interpreter
+	that could be used for Perl 6, Perl 5 and perhaps other
+	dynamic languages as well. Dan Sugalski volunteered to be the
+	internals designer for this interpreter (codenamed "Parrot",
+	after a particularly pervasive April Fool's joke) and
+	explained his decisions in a series of Parrot Design
+	Documents; when enough of the design was ready, Simon stepped
+	up to be the release manager in another futile attempt to put
+	off finishing this book. The first public release of Parrot
+	happened on Monday 10th of September 2001.
+      </para>
+      <para>
+	At the time of writing, Parrot has support for pluggable data
+	types, both simple and aggregate, can compile and execute
+	three "mini-languages", (mini-Scheme, mini-Perl and a language
+	specially written for Parrot, Jako) and has the beginnings of
+	an x86 Just-In-Time compiler. 
+      </para>
+      <para>
+	You can get the latest release of Parrot from CPAN in <ulink
+	url="http://www.cpan.org/authors/id/S/SI/SIMON/">Simon's home
+	directory</ulink> or by CVS from <ulink
+	url="http://cvs.perl.org/">the perl.org CVS server</ulink>.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Design and Implementation</title>
+      <para>
+	Dan has been keeping one thing in mind while designing Parrot:
+	speed. The Parrot interpreter will run Perl 6 very fast, and
+	most of the other elements of the design filter down from
+	that. However, we're not forgetting the lessons learnt from
+	the Perl 5 internals, and the guts of Parrot are designed to
+	be clearly understandable and easily maintainable.
+      </para>
+      <para>
+	Parrot deviates from the normal techniques used in building a
+	virtual machine by choosing a register rather than a stack
+	architecture. Although a register-based machine is slightly
+	more difficult to compile for, it has several advantages:
+	firstly, it allows us to use standard compiler optimization
+	techniques tailored for ordinary register-based CPUs;
+	secondly, it eliminates many of the stack-manipulation
+	operations which take up much of the time of a VM such Perl
+	5's; finally, by more closely resembling the underlying
+	hardware, it ought to be more straightforward to compile down
+	to native code. 
+      </para>
+      <para>
+	Parrot's data abstraction is done via a system of "PMC"s -
+	Parrot Magic Cookies. These are the equivalent of SVs, but are
+	much more sophisticated. Instead of calling a function on an
+	SV, the PMC carries around with it a vtable (a structure of
+	function pointers) full of the functions that it can
+	perform. In a sense, it is an object on which we can call
+	methods. In fact, the PMC abstraction acts as an abstract
+	virtual class, with each language providing vtables which
+	implement the interface; Perl classes will have, for instance,
+	an addition function which will do the right thing on a Perl
+	value, and Python classes may provide a function which does
+	something different. In this way, the core of Parrot can be
+	language-agnostic, with individual "users" of Parrot providing
+	data types to fit the needs of their language.
+      </para>
+      <para>
+	Finally, Parrot will have the ability to add in, on a
+	lexically scoped basis, custom ops in addition to its core
+	set. This will allow languages which do certain things wildly
+	differently from how Parrot expects to still be able to use
+	the interpreter. 
+      </para>
+    </sect2>
+    <sect2>
+      <title>What happens next</title>
+      <para>
+	Parrot and the design of Perl 6 are developing in parallel;
+	Larry will continue to produce Apocalypses explaining the
+	design, whereas the Parrot hackers are nearing the point where
+	it's worth thinking about compiling real languages onto the
+	VM.
+      </para>
+      <para>
+	The immediate goals for Parrot now are to add subroutine and
+	symbol table support, which should be everything needed for a
+	sensible interpreter. By the time the language design firms
+	up, we'll be able to switch emphasis towards writing a
+	compiler from Perl 6 down to Parrot assembler.
+      </para>
+    </sect2>
+    <sect2>
+      <title>The future for Perl 5</title>
+      <para>
+	So if Perl 6 is coming and it's going to be so cool, why have
+	we just written a book about Perl 5? Well, for starters, Perl
+	6 is going to take quite a while to get completed - writing a
+	Perl interpreter from scratch is quite an ambitious exercise! 
+	- and it'll then also take a very long time to become
+	generally accepted.
+      </para>
+
+      <para>
+	Perl 5 will continue to be developed, up until the release of
+	version 5.8.0, and even then maintainance will continue
+	throughout the lifespan of Perl 6. Perl 5 is not going to
+	become unsupported.
+      </para>
+
+      <para>
+	In short, Perl 5 isn't going away anytime soon. Remember how
+	long it took to get rid of all those Perl 4 interpreters and
+	code everywhere?  That was when we <emphasis>wanted</emphasis>
+	to get rid of it; now that Perl 6 is likely to be
+	non-compatible with Perl 5, we can expect real uptake to be
+	even slower. Since there's an awful lot of working Perl 5 code
+	out there, people aren't going to want to break it all by
+	upgrading to Perl 6.
+      </para>
+
+    </sect2>
+  </sect1>
+  <sect1>
+    <title>Summary</title>
+    <para>
+      This chapter looked at how to develop <filename>perl</filename>
+      itself; the development process and the perl5-porters mailing
+      list. As well as looking at some of the tools available to help
+      us develop, such as <filename>perl</filename>'s debugging mode
+      and the GNU Debugger, we also looked at the less technical parts
+      of being a Perl porter - how to approach Perl maintainance, and
+      how to get patches submitted and integrated to the Perl core.
+    </para>
+    <para>
+      We also looked at Perl 6, and gave a glimpse as to how things
+      are likely to be in the future.
+    </para>
+  </sect1>
+  <sect1>
+    <title>Related Reading</title>
+    <para>
+      More thoughts on patching Perl can be found in the perl5-porters
+      FAQ at <ulink
+      url="http://simon-cozens.org/writings/p5p.faq"></ulink>, Simon's
+      <ulink
+      url="http://simon-cozens.org/writings/perlhacktut.html">So You
+	Want To Be A Perl Porter?</ulink>, and in
+      <filename>pod/perlhack.pod</filename>,
+      <filename>Porting/patching.pod</filename> and
+      <filename>Porting/pumpking.pod</filename> in the Perl distribution.
+</para>
+  </sect1>
+</chapter>

@@ -1,0 +1,43 @@
+<sect3 id="api.hv.undef">
+    <title><function>hv_undef</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef> void <function>hv_undef</function></funcdef>
+        <paramdef>HV* <parameter>hv</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+
+<example>
+<title> Freeing a hash </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.hv_undef.1">
+        <area coords="2" id="api.hv_undef.2">
+        <area coords="3" id="api.hv_undef.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.hv_undef.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.hv_undef.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.av.undef"></para>
+      </sect3>

@@ -1,0 +1,371 @@
+<!doctype chapter PUBLIC "-//OASIS//DTD DocBook V4.1//EN">
+
+<chapter id="api">
+  <title>The Perl 5 API</title>
+  
+  <para>
+    The Perl 5 API is the interface by which your C code is allowed to talk
+    to Perl; it provides functions for manipulating variables, for executing
+    Perl code and regular expressions, for file handling, memory management
+    and so on.
+  </para>
+
+  <para>
+    The API is also used inside the Perl core as a set of utility functions to
+    manipulate the environment which the Perl interpreter provides. It's
+    also the building blocks out of which you will create extensions and by
+    which you will drive an embedded Perl interpreter from C - hence, the
+    functions and macros you learn about here will form the basis of the
+    rest of the book.
+  </para>
+
+  <para>
+    This chapter is a reference to the Perl 5 API, so the example code for
+    each function will probably contain uses of other functions not yet
+    explained. You are encouraged to jump around the chapter, following
+    references to later functions and jumping back to see how they're used
+    in real code. 
+  </para>
+
+  <para>
+    As much as possible, we've tried to make the example code real, rather
+    than contrived, taking the code from XS modules and, where possible,
+    from the Perl sources or extension modules inside the Perl core.
+  </para>
+
+  <sect1>
+    <title>Sample Entry</title>
+
+    <para>
+      Here is the format we will use when introducing functions:
+    </para>
+
+    <formalpara>
+      <title>something <emphasis>(the name of the function)</emphasis></title>
+      <para>
+    <funcsynopsis>
+      <funcprototype>
+	<funcdef>char * <function>something</function></funcdef>
+	    <paramdef>int <parameter>parameter</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+
+A brief explanation of what the function does.
+
+<example>
+	  <title>Using <function>something</function></title>
+	  <programlistingco>
+	    <areaspec>
+	      <area coords="2" id="api.test">
+	    </areaspec>
+	  <programlisting>
+if (testing)
+    result = something(whatsit);
+</programlisting>
+	    <calloutlist>
+	      <callout arearefs="api.test">
+		<para>An explanation of how the function is used here.</para>
+	      </callout>
+	    </calloutlist>
+	  </programlistingco>
+
+	</example>
+</para>
+      </formalpara>
+
+  </sect1>
+
+  <sect1>
+    <title><type>SV</type> Functions</title>
+
+    <para>
+      Before we look at the functions for manipulating <type>SV</type>s,
+      there are certain special values that Perl defines for us.
+    </para>
+
+    <sect2>
+      <title>Special <type>SV</type>s</title>
+
+       &api.PL.sv.undef;
+       &api.PL.sv.yesno;
+
+    </sect2>
+
+    <sect2>
+      <title>Creation and Destruction</title>
+
+       &api.get.sv;
+       &api.NewSV;
+
+
+
+    </sect2>
+
+
+    <sect2 id="data">
+      <title>Accessing Data</title>
+
+  <remark>As well as SvIV, Also need sv_setiv et al in here - TJ</remark>
+      <remark>SvTYPE</remark>
+      <para></para>
+    </sect2>
+    <sect2>
+      <title>String Functions</title>
+      <para></para>
+    </sect2>
+    <sect2>
+      <title>References</title>
+      <para>
+	Finally, we can also take a reference to a Perl value, with
+	the <function>newRV</function> functions, and dereference them again.
+      </para>
+       &api.newRV;
+       &api.SvRV;
+    </sect2>
+  </sect1>
+
+  <sect1>
+    <title><type>AV</type> Functions</title>
+    
+    <para>
+As we know, <type>AV</type>s are Perl arrays; this section contains
+the functions which we can perform on those arrays.
+</para>
+   
+    <sect2>
+      <title>Creation and Destruction</title>
+       &api.get.av;
+       &api.newav;
+       &api.av.make;
+       &api.av.clear;
+       &api.av.undef;
+    </sect2>
+    <sect2>
+      <title>Manipulating Elements</title>
+       &api.av.fetch;
+       &api.av.store;
+       &api.av.pop;
+       &api.av.push;
+
+      <sect3>
+    <title><function>av_delete </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>??? <function>av_delete</function></funcdef>
+        <paramdef>??? <parameter>??</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av_delete.1">
+        <area coords="2" id="api.av_delete.2">
+        <area coords="3" id="api.av_delete.3">
+	    </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av_delete.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_delete.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>
+
+
+      <sect3>
+    <title><function>av_exists </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>??? <function>av_exists</function></funcdef>
+        <paramdef>??? <parameter>??</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+
+<example>
+<title> ??? </title>
+<para>
+</para>
+<!-- Introduction to example -->
+
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av_exists.1">
+        <area coords="2" id="api.av_exists.2">
+        <area coords="3" id="api.av_exists.3">
+          </areaspec>
+          <programlisting>
+
+          <calloutlist>
+        <callout arearefs="api.av_exists.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_exists.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+</para>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>
+
+    </sect2>
+    <sect2>
+      <title>Testing and Changing Size</title>
+
+       &api.av.extend;
+
+      <sect3>
+    <title><function>av_fill</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef> <function>av_fill</function></funcdef>
+        <paramdef>AV* <parameter>av</parameter></paramdef>
+        <paramdef>I32 <parameter>fill</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av_fill.1">
+        <area coords="2" id="api.av_fill.2">
+        <area coords="3" id="api.av_fill.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av_fill.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_fill.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>
+
+
+       &api.av.len;
+    </sect2>
+  </sect1>
+
+  <sect1>
+    <title>HV Functions</title>
+
+    <sect2>
+      <title>Creation and Destruction</title>
+ 
+       &api.get.hv;
+
+       &api.newhv;
+
+       &api.hv.clear;
+
+       &api.hv.undef;
+    </sect2>
+
+    <sect2>
+      <title>Manipulating Elements</title>
+
+       &api.hv.delete;
+
+
+       &api.hv.exists.ent;
+
+
+       &api.hv.fetch.ent;
+
+
+       &api.hv.store.ent;
+    </sect2>
+  </sect1>
+
+  <sect1>
+    <title>Miscellaneous Functions</title>
+
+  <sect2>
+    <title>Memory Management</title>
+    <para></para>
+
+
+       &api.New;
+
+       &api.Copy;
+
+       &api.Move;
+
+
+       &api.Renew;
+
+
+       &api.Safefree;
+
+      <sect3>
+	<title>StructCopy</title>
+	<para></para>
+      </sect3>
+
+       &api.Zero;
+
+  </sect2>
+  <sect2>
+    <title>File Handling</title>
+    <para></para>
+  </sect2>
+  <sect2>
+    <title>Unicode Data Handling</title>
+    <para></para>
+  </sect2>
+    <sect2>
+      <title>Everything Else</title>
+      <para></para>
+<remark>The ExtUtils typemap file uses INT2PTR so we have to make sure that is covered somewhere soonish. Not sure what the plan is for this - TJ</remark>
+      <sect3>
+	<title>croak</title>
+	<para></para>
+      </sect3>
+    </sect2>
+  </sect1>
+
+
+</chapter>

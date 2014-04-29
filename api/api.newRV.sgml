@@ -1,0 +1,94 @@
+<sect3 id="api.newRV">
+	<title><function>newRV</function> and <function>newRV_noinc</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>newRV</function></funcdef>
+	    <paramdef>SV* <parameter>referent</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>newRV_noinc</function></funcdef>
+	    <paramdef>SV* <parameter>referent</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+	  <function>newRV</function> is the C side of the Perl
+	  <literal>\</literal> (reference) operator. It returns an
+	  <type>SvRV</type> structure as described in <xref
+	  linkend="perlvar.svrv">, and increases the reference count
+	  of the referent. Although we say that the referent is an
+	  <type>SV*</type>, this applies to any type of
+	  <type>SV</type>, including <type>AV</type>s and
+	  <type>HV</type>s.
+	</para>
+	<para>
+	  The variant function <function>newRV_noinc</function> takes
+	  a reference and returns a <type>SvRV</type>, but does not
+	  increase the reference count of its referent. Since this
+	  can cause problems if the referent goes out of scope while
+	  you still have a reference to it, you should use it with
+	  caution.
+	  <example>
+	    <title><literal>return bless {}, $class</literal></title>
+	    <para>
+	      An anonymous hash reference (<literal>{}</literal> in
+	      Perl) is a reference to a hash which has nothing else
+	      referring to it - that is, its reference count is
+	      one. To create an anonymous hash, we create a hash and
+	      take a reference to it. Unfortunately, when a hash is
+	      created, its reference count is already one. If we take
+	      a reference to it with <function>newRV</function>, its
+	      reference count will increase. The correct solution is
+	      seen in Apache <literal>mod_perl</literal>, in
+	      <filename>modules/perl/perl_config.c</filename>:
+</para>
+	    <programlistingco>
+	      <areaspec>
+		<area coords="1" id="api.newrv.1">
+		<area coords="1" id="api.newrv.2">
+		<area coords="1" id="api.newrv.3">
+	      </areaspec>
+	      <programlisting>
+        if(!SvTRUE(*sv)) {
+            *sv = newRV_noinc((SV*)newHV());
+            return sv_bless(*sv, pclass);
+        }
+</programlisting>
+	      <calloutlist>
+		<callout arearefs="api.newrv.1">
+		  <para>
+		    We're about to return a value from a constructor;
+		    if we don't have a sensible (that is, true) return
+		    value already, we need to make one.
+		  </para>
+		</callout>
+		<callout arearefs="api.newrv.2">
+		  <para>
+		    The comment in the C source at this point is
+		    <literal> /* return bless {}, $class */</literal>,
+		    which should tell you what we're trying to do. We
+		    create a hash with <function>newHV</function> (see
+		    <xref linkend="api.newhv">) and then take a
+		    reference to it without increasing its reference
+		    count. Notice that since
+		    <function>newRV_noinc</function> expects an
+		    <type>SV*</type>, we need to use a cast. This
+		    isn't a problem, though, as the
+		    <function>sv_type</function> field of the SV
+		    structure tells <function>newRV</function> what
+		    sort of reference it's taking.
+		  </para>
+		</callout>
+		<callout arearefs="api.newrv.3">
+		  <para>
+		    Now we have our anonymous hash reference, we bless
+		    it using <function>sv_bless</function> into the
+		    class specified in the string <varname>pclass</varname>.
+		  </para>
+		</callout>
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+</para>
+      </sect3>

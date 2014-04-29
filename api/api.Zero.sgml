@@ -1,0 +1,42 @@
+<sect3 id="api.Zero">
+    <title><function>Zero</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>??? <function>Zero</function></funcdef>
+        <paramdef>??? <parameter>??</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.Zero.1">
+        <area coords="2" id="api.Zero.2">
+        <area coords="3" id="api.Zero.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.Zero.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.Zero.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+</para>
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

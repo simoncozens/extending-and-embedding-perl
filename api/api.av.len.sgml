@@ -1,0 +1,42 @@
+<sect3 id="api.av.len">
+    <title><function>av_len </function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>I32 <function>av_len</function></funcdef>
+        <paramdef>AV* <parameter>av</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av_len.1">
+        <area coords="2" id="api.av_len.2">
+        <area coords="3" id="api.av_len.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av_len.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av_len.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

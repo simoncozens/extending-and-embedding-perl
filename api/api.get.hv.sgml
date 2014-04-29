@@ -1,0 +1,43 @@
+<sect3 id="api.get.hv">
+    <title><function>get_hv</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef>HV* <function>get_hv</function></funcdef>
+        <paramdef>char* <parameter>name</parameter></paramdef>
+        <paramdef>bool <parameter>create</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> ??? </title>
+<para>
+
+<!-- Introduction to example -->
+</para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.get_hv.1">
+        <area coords="2" id="api.get_hv.2">
+        <area coords="3" id="api.get_hv.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.get_hv.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.get_hv.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.get.av">,</para>
+      </sect3>

@@ -1,0 +1,10 @@
+package Hermes;
+
+$save_outgoing = 1;
+
+# Prefer vim, but use emacs if vim not available.
+$editor = `which vim` || `which emacs`; 
+
+$quote_char = "> ";
+
+$check_every = 10; # seconds

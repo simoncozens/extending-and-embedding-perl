@@ -1,0 +1,2048 @@
+<chapter id="internals">
+  
+  <title>Introduction to Perl Internals</title>
+  
+<sect1 id="internals.sourcetree">
+    <title>The Source Tree</title>
+    <para>
+        This section introduces you to the major parts of the Perl
+        source tree that you should familiarise yourself with.
+    </para>
+
+  <sect2>
+    <title>The Perl Library</title>
+    <para>
+      The most approachable part of the source code, for Perl
+      programmers, is the Perl library. This lives in
+      <filename>lib/</filename>, and comprises all the standard, pure
+      Perl modules and pragmata that ship with
+      <filename>perl</filename>.
+    </para>
+    <para>
+      There are both Perl 5 modules and unmaintained Perl 4 libraries,
+      shipped for backwards compatibility. In Perl 5.6.0 and above,
+      the Unicode tables are placed in
+      <filename>lib/unicode</filename>.
+    </para>
+  </sect2>
+  <sect2>
+    <title>The XS Library</title>
+    <para>
+      In <filename>ext/</filename>, we find the XS modules which ship
+      with Perl. For instance, the Perl compiler <classname>B</classname> 
+      can be found here,
+      as can the DBM interfaces. The most important XS module here is
+      <classname>DynaLoader</classname>, the dynamic loading interface
+      which allows the runtime loading of every other XS module.
+    </para>
+    <para>
+      As a special exception, the XS code to the methods in the
+      <classname>UNIVERSAL</classname> class can be found in <filename>universal.c</filename>.
+    </para>
+  </sect2>
+  <sect2>
+    <title>The IO Subsystem</title>
+    <para>
+      Recent versions of Perl come with a completely new standard IO
+      implementation, <classname>PerlIO</classname>.  This allows for
+      several "layers" to be defined through which all IO is filtered,
+      similar to the line disciplines mechanism in
+      <classname>sfio</classname>. These layers interact with modules
+      such as <classname>PerlIO::Scalar</classname>, also in the
+      <filename>ext/</filename> directory.
+    </para>
+    <para>
+      The IO subsystem is implemented in
+      <filename>perlio.c</filename> and
+      <filename>perlio.h</filename>. Declarations for defining the
+      layers are in <filename>perliol.h</filename>, and documentation
+      on how to create layers is in <filename>pod/perliol.pod</filename>.
+    </para>
+    <para>
+      Perl may be compiled without <classname>PerlIO</classname>
+      support, in which case there are a number of abstraction layers
+      to present a unified IO interface to the Perl
+      core. <filename>perlsdio.h</filename> aliases ordinary standard
+      IO functions to their <classname>PerlIO</classname> names, and
+      <filename>perlsfio.h</filename> does the same thing for the
+      alternate IO library <classname>sfio</classname>.
+    </para>
+    <para>
+      The other abstraction layer is the "Perl host" scheme in
+      <filename>iperlsys.h</filename>. This is confusing. The idea is
+      to reduce process overhead on Win32 systems by having multiple
+      Perl interpreters access all system calls through a shared "Perl
+      host" abstraction object. There is an explanation of it in
+      <filename>perl.h</filename>, but it is best avoided.
+    </para>
+  </sect2>
+  <sect2>
+    <title>The Regexp Engine</title>
+    <para>
+      Another area of the Perl source best avoided is the regular
+      expression engine. This lives in <filename>re*.*</filename>. The
+      regular expression matching engine is, roughly speaking, a state
+      machine generator. Your match pattern is turned into a state
+      machine made up of various match nodes - you can see these nodes
+      in <filename>regcomp.sym</filename>. The compilation phase is
+      handled by <filename>regcomp.c</filename>, and the state
+      machine's execution is performed in <filename>regexec.c</filename>.
+    </para>
+  </sect2>
+  <sect2>
+    <title>The Parser and Tokeniser</title>
+    <para>
+      The first stage in Perl's operation is to
+      "understand" your program. This is done by a joint effort of the
+      tokeniser and the parser. The tokeniser is found in
+      <filename>toke.c</filename>, and the parser in
+      <filename>perly.c</filename>. (although you're far, far better
+      off looking at the YACC source in <filename>perly.y</filename>)
+    </para>
+    <para>
+      The job of the tokeniser is to split up the input into
+      meaningful chunks, or <firstterm>tokens</firstterm>, and also to
+      determine what type of thing they represent - a Perl keyword, a
+      variable, a subroutine name, and so on. The job of the parser is
+      to take these tokens and turn them into "sentences",
+      understanding their relative meaning in context.
+    </para>
+  </sect2>
+  <sect2>
+    <title>Variable Handling</title>
+    <para>
+      As we already know, Perl provides C-level implementations of
+      scalars, arrays and hashes. The code for handling
+      arrays is in <filename>av.*</filename>, hashes are in
+      <filename>hv.*</filename> and scalars are in
+      <filename>sv.*</filename>.
+    </para>
+  </sect2>
+  <sect2>
+    <title>Run-time Execution</title>
+    <para>
+      What about the code to Perl's built-ins -
+      <literal>print</literal>, <literal>foreach</literal> and the
+      like? These live in <filename>pp.*</filename>, and some
+      of the functionality is shelled out to
+      <filename>doio.c</filename>.
+    </para>
+    <para>
+      The actual main loop of the interpreter is in
+      <filename>run.c</filename>.
+    </para>
+  </sect2>
+
+  </sect1>
+  
+  <sect1 id="internals.parser">
+    <title>The Parser</title>
+
+    <para>
+      Perl is a bytecode-compiled language, which means that execution
+      of a Perl program happens in two stages. First of all, the
+      program is read, parsed and compiled into an internal
+      representation of the operations to be performed; after that,
+      the interpreter takes over and traverses this internal
+      representation, executing the operations in order. We'll first
+      look at how Perl is parsed, before moving on to looking at the
+      internal representation of a program.
+    </para>
+  
+    <para>
+      As discussed above the parser lives in
+      <filename>perly.y</filename>. This is code in a language called
+      Yacc, which is converted to C using the <command>byacc</command>
+      command.  In order to understand this language, we need to
+      understand how grammars work and how parsing works.  </para>
+
+    <sect2>
+      <title>BNF and Parsing</title>
+      <para>
+	Computer programmers define a language by its grammar, which
+	is a set of rules. They usually describe this grammar in a
+	form called "Backhaus-Naur Form"
+	<footnote>
+	  <para>Sometimes "Backhaus Normal Form"</para>
+	</footnote>
+	or <firstterm>BNF</firstterm>. BNF tells us how phrases fit
+	together to make sentences. For instance, here's a simple BNF
+	for English - obviously, this isn't going to describe the
+	whole of the English grammar, but it's a start:
+
+	<programlisting>
+	  sentence   : nounphrase verbphrase nounphrase;
+
+	  verbphrase : VERB;
+
+	  nounphrase : NOUN
+	  | ADJECTIVE  nounphrase
+	  | PRONOMINAL nounphrase
+	  | ARTICLE    nounphrase;
+	</programlisting>
+
+	Here is the prime rule of BNF: you can make the thing on the
+	left of the colon if you see all the things on the right in
+	sequence. So, this grammar tells us that a sentence is made up
+	of a noun phrase, a verb phrase and then a noun phrase. The
+	vertical bar does exactly what it does in regular expressions:
+	you can make a noun phrase if you have a noun, or an adjective
+	plus another noun phrase, or an article plus a noun
+	phrase. Turning the things on the right into the thing on the
+	left is called a <firstterm>reduction</firstterm>. The idea of
+	parsing is to reduce all of the input down to the first thing
+	in the grammar - a sentence.
+      </para>
+      <para>
+	You'll notice that things which can't be broken down any
+	further are in capitals - there's no rule which tells us how
+	to make a noun, for instance. This is because these are fed to
+	us by the lexer; these are called <firstterm>terminal
+	  symbols</firstterm>, and the things which aren't in capitals
+	are called <firstterm>non-terminal symbols</firstterm>. Why?
+	Well, let's see what happens if we try and parse a sentence in
+	this grammar.
+	<inlinemediaobject>
+	  <imageobject>
+	    <imagedata fileref="mycat.eps" format="eps">
+	  </imageobject>
+	  <imageobject>
+	    <imagedata fileref="mycat.gif" format="gif">
+	  </imageobject>
+	</inlinemediaobject>
+      </para>
+      <para>
+	The text right at the bottom - "my cat eats fish" - is what we
+	get in from the user. The tokeniser then turns that into a
+	series of tokens - "PRONOMINAL NOUN VERB NOUN". From that, we
+	can start performing some reductions: we have a pronominal, so
+	we're looking for a noun phrase to satisfy the
+	<literal>nounphrase : PRONOMINAL nounphrase</literal>
+	rule. Can we make a noun phrase? Yes, we can, by reducing the
+	<literal>NOUN</literal> ("cat") into a
+	<literal>nounphrase</literal>. Then we can use
+	<literal>PRONOMINAL nounphrase</literal> to make another
+	<literal>nounphrase</literal>.
+      </para>
+
+      <para>
+	Now we've got a <literal>nounphrase</literal> and a
+	<literal>VERB</literal>. We can't do anything further with the
+	<literal>nounphrase</literal>, so we'll switch to the
+	<literal>VERB</literal>, and the only thing we can do with
+	that is turn it into a <literal>verbphrase</literal>. Finally,
+	we can reduce the noun to a <literal>nounphrase</literal>,
+	leaving us with <literal>nounphrase verbphrase
+	  nounphrase</literal>. Since we can turn this into a
+	<literal>sentence</literal>, we've parsed the text.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Parse actions and token values</title>
+      <para>
+	It's important to note that the tree we've constructed above -
+	the "parse tree" - is only a device to help us understand the
+	parsing process. It doesn't actually exist as a data structure
+	anywhere in the parser. This is actually a little
+	inconvenient, because the whole point of parsing a piece of
+	Perl text is to come up with a data structure pretty much like
+	that.
+      </para>
+      <para>
+	Not a problem. Yacc allows us to extend BNF by adding
+	actions to rules - every time the parser performs a reduction
+	using a rule, it can trigger a piece of C code to be
+	executed.  Here's an extract from Perl's grammar in
+	<filename>perly.y</filename>:
+	<programlisting>
+term    :   term ASSIGNOP term
+	  { $$ = newASSIGNOP(OPf_STACKED, $1, $2, $3); }
+        |   term ADDOP term
+	  { $$ = newBINOP($2, 0, scalar($1), scalar($3)); }
+	</programlisting>
+	The pieces of code in the curlies are actions to be
+	performed. Here's the final piece of the puzzle: each symbol
+	carries some additional information around. For instance, in
+	our "cat" example, the first <literal>NOUN</literal> had the
+	value "cat". You can get at the value of a symbol by a Yacc
+	variable starting with a dollar sign: in the example above,
+	<varname>$1</varname> is the value of the first symbol on the
+	right of the colon (<literal>term</literal>),
+	<varname>$2</varname> is the value of the second symbol
+	(either <literal>ASSIGNOP</literal> or
+	<literal>ADDOP</literal> depending on which line you're
+	reading) and so on. <varname>$$</varname> is the value of the
+	symbol on the left. Hence information is propagated "up" the
+	parse tree by manipulating the information on the right and
+	assigning it to the symbol on the left.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Parsing some Perl</title>
+      <para>
+	So, let's see what happens if we parse the Perl code
+	<userinput>$a = $b + $c</userinput>. We have to assume that
+	<userinput>$a</userinput>, <userinput>$b</userinput> and
+	<userinput>$c</userinput> have already been parsed a little;
+	they'll turn into <literal>term</literal> symbols. Each of
+	these symbols will have a value, and that will be an "op". An
+	"op" is a data structure representing an operation, and the
+	operation to be represented will be that of retrieving the
+	storage pointed to by the appropriate variable.
+      </para>
+      <para>
+	Let's start from the right<footnote>
+	  <para>
+	    This is slightly disingenous, as parsing is always done
+	    from left to right, but this simplification is easier than
+	    getting into the details of how Yacc grammars recognise
+	    the precendence of operators.
+	  </para>
+	</footnote>
+	, and deal with <userinput>$b + $c</userinput>. The
+	<userinput>+</userinput> is turned by the lexer into the
+	terminal symbol <literal>ADDOP</literal>. Now, just like there
+	can be lots of different nouns that all get tokenised to
+	<literal>NOUN</literal>, there can be several different
+	<literal>ADDOP</literal>s - concatenation is classified as an
+	<literal>ADDOP</literal>, so <userinput>$b . $c</userinput>
+	would look just the same to the parser. The difference, of
+	course, is the value of the symbol - this
+	<literal>ADDOP</literal> will have the value
+	<literal>'+'</literal>.
+      </para>
+      <para>
+	Hence, we have <literal>term ADDOP term</literal>. This means
+	we can perform a reduction, using the second rule in our
+	snippet. When we do that, we have to perform the code in
+	curlies underneath the rule - 
+	<literal> { $$ = newBINOP($2, 0, scalar($1), scalar($3));	}</literal>. 
+	<function>newBINOP</function> is a function which creates a
+	new binary "op". The first argument is the type of binary
+	operator, and we feed it the value of the second symbol. This
+	is <literal>ADDOP</literal>, and as we have just noted, this
+	symbol will have the value <literal>'+'</literal>. So although
+	<literal>'.'</literal> and <literal>'+'</literal> look the
+	same to the parser, they'll eventually be distinguished by the
+	value of their symbol. Back to
+	<function>newBINOP</function>. The next argument is the flags
+	we wish to pass to the op. We don't want anything special, so
+	we pass zero.
+      </para>
+      <para>
+	Then we have our arguments to the binary operator - obviously,
+	these are the value of the symbol on the left and the value of
+	the symbol on the right of the operator. As we mentioned
+	above, these are both "op"s, to retrieve the values of
+	<varname>$b</varname> and <varname>$c</varname> respectively.
+	We assign the new "op" created by
+	<function>newBINOP</function> to be the value of the symbol
+	we're propagating upwards. Hence, we've taken two ops - the
+	ones for <varname>$b</varname> and <varname>$c</varname> -
+	plus an addition symbol, and turned them into a new op
+	representing the combined action of fetching the values of
+	<varname>$b</varname> and <varname>$c</varname> and then
+	adding them together.
+      </para>
+      <para>
+	Now we do the same thing with <literal>$a =
+	  ($b+$c)</literal>. I've put the right hand side in brackets to
+	show that we've already got something which represents
+	fetching <varname>$b</varname> and <varname>$c</varname> and
+	adding them. <literal>=</literal> is turned into an
+	<literal>ASSIGNOP</literal> by the tokeniser in the same way
+	as we turned <literal>+</literal> into an
+	<literal>ADDOP</literal>. And, in just the same way, there are
+	various different types of assignment operator -
+	<literal>||=</literal> and <literal>&amp;&amp;=</literal> are
+	also passed as <literal>ASSIGNOP</literal>s. From here, it's
+	easy: we take the <literal>term</literal> representing
+	<varname>$a</varname>, plus the <literal>ASSIGNOP</literal>,
+	plus the <literal>term</literal> we've just constructed,
+	reduce them all to another <literal>term</literal>, and
+	perform the action underneath the rule. In the end, we end up
+	with a data structure a little like this:
+	<inlinemediaobject>
+	  <imageobject>
+	    <imagedata fileref="abc-simple.eps" format="eps">
+	  </imageobject>
+	  <imageobject>
+	    <imagedata fileref="abc-simple.gif" format="gif">
+	  </imageobject>
+	</inlinemediaobject>
+      </para>
+      <para>
+	You can find a hypertext version of the Perl grammar at <ulink
+	url="http://simon-cozens.org/hacks/grammar.pdf">http://simon-cozens.org/hacks/grammar.pdf</ulink>
+      </para>
+    </sect2>
+  </sect1>
+  <sect1 id="internals.tokeniser">
+    <title>The Tokeniser</title>
+    <para>
+      The tokeniser, in <filename>toke.c</filename> is one of the most
+      difficult parts of the Perl core to understand; this is
+      primarily because there is no real "roadmap" to explain its
+      operation. In this section, we'll try to show how the tokeniser
+      is put together.
+    </para>
+    <sect2>
+      <title>Basic tokenising</title>
+      <para>
+	The core of the tokeniser is the intimidatingly long
+	<function>yylex</function> function. This is the function
+	called by the parser, <function>yyparse</function>, when it
+	requests a new token of input.
+      </para>
+      <para>
+	First, some basics. When a token has been identified, it is
+	placed in <varname>PL_tokenbuf</varname>. The file handle from
+	which input is being read is <varname>PL_rsfp</varname>. The
+	current position in the input is stored in the variable
+	<varname>PL_bufptr</varname>, which is a pointer into the PV
+	of the SV <varname>PL_linestr</varname>. When scanning for a
+	token, the variable <varname>s</varname> advances from the
+	start of <varname>PL_bufptr</varname> towards the end of the
+	buffer (<varname>PL_bufend</varname>) until it finds a token.
+      </para>
+      <para>
+	The first thing the parser does is test whether the next thing
+	in the input stream has already been identified as an
+	identifier; when the tokeniser sees <literal>'%'</literal>,
+	<literal>'$'</literal> and the like as part of the input, it
+	tests to see whether it introduces a variable. If so, it puts
+	the variable name into the token buffer. It then returns the
+	type sigil (<literal>%</literal>, <literal>$</literal>, etc.) 
+	as a token, and sets a flag
+	(<varname>PL_pending_ident</varname>) so that the next time
+	<function>yylex</function> is called, it can pull the variable
+	name straight out of the token buffer. Hence, right at the top
+	of <function>yylex</function>, you'll see code which tests
+	<varname>PL_pending_ident</varname> and deals with the
+	variable name.
+      </para>
+      <sect3>
+	<title>Tokeniser State</title>
+	<para>
+	  Next, if there's no identifier in the token buffer, it checks
+	  its tokeniser state. The tokeniser uses the variable
+	  <varname>PL_lex_state</varname> to store state
+	  information.
+	</para>
+	<para>
+	  One important state is <literal>LEX_KNOWNEXT</literal>, which
+	  occurs when Perl has had to look ahead one token to identify
+	  something. If this happens, it has tokenised not just the next
+	  token, but the one after as well. Hence, it sets
+	  <literal>LEX_KNOWNEXT</literal> to say "we've already
+	  tokenised this token, simply return it."
+	</para>
+	<para>
+	  The functions which set <literal>LEX_KNOWNEXT</literal> are
+	  <function>force_word</function>, which declares that the next
+	  token has to be a word, (for instance, after having seen an
+	  arrow in <literal>$foo->bar</literal>)
+	  <function>force_ident</function>, which makes the next token
+	  an identifier, (for instance, if it sees a
+	  <literal>*</literal> when not expecting an operator, this must
+	  be a glob) <function>force_version</function>, (on seeing a
+	  number after <literal>use</literal>) and the general
+	  <function>force_next</function>.
+	</para>
+	<para>
+	  Many of the other states are to do with interpolation of
+	  double-quoted strings; we'll look at those in more detail in
+	  the next section.
+	</para>
+      </sect3>
+      <sect3>
+	<title>Looking ahead</title>
+	<para>
+	  After checking the lexer state, it's time to actually peek at
+	  the buffer and see what's waiting; this is the start of the
+	  giant <literal>switch</literal> statement in the middle of
+	  <function>yylex</function>, just following the label
+	  <literal>retry</literal>.
+	</para>
+	<para>
+	  One of the first things we check for is character zero - this
+	  signifies either the start or the end of the file or the end
+	  of the line. If it's the end of the file, the tokeniser
+	  returns zero and the game is one; at the beginning of the
+	  file, Perl has to process the code for command line switches
+	  such as <literal>-n</literal> and
+	  <literal>-p</literal>. Otherwise, Perl calls
+	  <function>filter_gets</function> to get a new line from the
+	  file through the source filter system, and calls
+	  <function>incline</function> to increase the line
+	  number.
+	</para>
+	<para>
+	  The next test is for comments and new lines, which Perl skips
+	  over. After that come the tests for individual special
+	  characters. For instance, the first test is for minus, which
+	  could be unary minus if followed by a number or identifier, or
+	  the binary minus operator if Perl is expecting an operator, or
+	  the arrow operator if followed by a <literal>&gt;</literal>,
+	  or the start of a filetest operator if followed by an
+	  appropriate letter, or a quoting option such as <literal>(-foo
+	    => "bar" )</literal>. Perl tests for each case, and returns
+	  the token type using one of the upper-case token macros
+	  defined at the beginning of <filename>toke.c</filename>:
+	  <literal>OPERATOR</literal>, <literal>TERM</literal>, and so on.
+	</para>
+	<para>
+	  If the next character isn't a symbol that Perl knows about,
+	  it's an alphabetic character which might start a keyword: the
+	  tokeniser jumps to the label <literal>keylookup</literal>
+	  where it checks for labels and things like
+	  <literal>CORE::function</literal>. It then calls
+	  <function>keyword</function> to test whether it is a valid
+	  built-in or not - if so, <function>keyword</function> turns it
+	  into a special constant (such as <literal>KEY_open</literal>)
+	  which can be fed into the <literal>switch</literal>
+	  statement. If it's not a keyword, Perl has to determine
+	  whether it's a bareword, a function call or an indirect object
+	  or method call.
+	</para>
+      </sect3>
+      <sect3>
+	<title>Keywords</title>
+	<para>
+	  The final section of the <literal>switch</literal> statement
+	  deals with the <literal>KEY_</literal> constants handed back
+	  from <function>keyword</function>, performing any actions
+	  necessary for using the builtins. (For instance, given
+	  <literal>__DATA__</literal>, the tokeniser sets up the
+	  <literal>DATA</literal> filehandle.)
+	</para
+      </sect3>      
+    </sect2>
+    <sect2>
+      <title>Sublexing</title>
+      <para>
+	"Sublexing" refers to the the fact that inside double-quoted
+	strings and other interpolation contexts (regular expressions,
+	for instance) a different type of tokenisation is needed.
+      </para>
+      <para>
+	This is typically started after a call to
+	<function>scan_str</function>, which is an exceptionally
+	clever piece of code which extracts a string with balanced
+	delimiters, placing it into the SV
+	<varname>PL_lex_stuff</varname>. Then
+	<function>sublex_start</function> is called which sets up the
+	data structures used for sublexing and changes the lexer's
+	state to <literal>LEX_INTERPPUSH</literal>, which is
+	essentially a scoping operator for sublexing.
+      </para>
+      <para>
+	Why does sublexing need scoping? Well, consider something like
+	<literal>"Foo\u\LB\uarBaz"</literal>. This actually gets
+	tokenized as the moral equivalent of <literal>"Foo" .
+	ucfirst(lc("B" . ucfirst("arBaz")))</literal>. The push state
+	(which makes a call to <function>sublex_push</function>) quite
+	literally pushes an opening bracket onto the input
+	stream.</para>
+      <para>
+	This in turn changes the state to
+	<literal>LEX_INTERPCONCAT</literal>; the concatentation state
+	uses <function>scan_const</function> to pull out constant
+	strings and supplies the concatenation operator between
+	them. If a variable to be interpolated is found, the state is
+	changed to <literal>LEX_INTERPSTART</literal>: this means that
+	<literal>"foo$bar"</literal> is changed into
+	<literal>"foo".$bar</literal> and <literal>"foo@bar"</literal>
+	is turned into <literal>"foo".join($",@bar)</literal>. 
+      </para>
+      <para>
+	There are times when it is not sure when sublexing of an
+	interpolated variable should end - in these cases, the
+	horrifyingly scary function <function>intuit_more</function>
+	is called to make an educated guess on the likelihood of more
+	interpolation.
+      </para>
+      <para>
+	Finally, once sublexing is done, the state is set to
+	<literal>LEX_INTERPEND</literal> which fixes up the closing
+	brackets.
+      </para>
+    </sect2>
+    <sect2>
+      <title>Summary</title>
+      <para>
+	So far, we've briefly examined how Perl turns Perl
+	source input into a tree data structure suitable for executing;
+	next, we'll look more specifically at the nature
+	of the nodes in that tree.
+      </para>
+      <para>
+	There are two stages to this operation: the tokeniser,
+	<filename>toke.c</filename>, chops up the incoming program and
+	recognises different token types; the parser
+	<filename>perly.y</filename> then assembles these tokens into
+	phrases and sentences. In reality, the whole task is driver by
+	the parser - Perl calls <function>yyparse</function> to parse a
+	program, and when the parser needs to know about the next token,
+	it calls <function>yylex</function>.
+      </para>
+      <para>
+	While the parser is relatively straightforward, the tokeniser is
+	somewhat more tricky. The key to understanding it is to divide
+	its operation into checking tokeniser state, dealing with
+	non-alphanumeric symbols in ordinary program code, dealing with
+	alphanumerics, and dealing with double-quoted strings and other
+	interpolation contexts.
+      </para>
+    <para>
+      Very few people actually understand the whole of how the
+      tokeniser and parser work, but this chapter should have given
+      you a useful insight into how Perl understands program code, and
+      how to locate the source of particular behaviour inside the
+      parsing system.
+    </para>
+  </sect2>
+
+  </sect1>
+
+  <sect1 id="internals.optree">
+    <title> Op Code Trees </title>
+
+  <para>
+    So we've seen that the job of the parsing stage is to reduce a
+    program to a tree structure, and each node of the tree represents
+    an operation. In this chapter, we'll look more closely at those
+    operations: what they are, how they're coded, and how they fit together.
+  </para>
+
+  <sect2 id="internals.optress.basic"> 
+    <title> The basic op </title>
+    <para>
+      Just AVs and HVs are "extensions" of the basic SV structure,
+      there are a number of different "flavours" of ops, built on a
+      basic OP structure; you can find this structure defined as
+      <literal>BASEOP</literal> in <filename>op.h</filename>:
+    </para>
+    <programlisting>
+    OP*         op_next;
+    OP*         op_sibling;
+    OP*         (CPERLscope(*op_ppaddr))(pTHX); 
+    PADOFFSET   op_targ;
+    OPCODE      op_type;
+    U16         op_seq;
+    U8          op_flags;
+   U8          op_private;
+    </programlisting>
+    <para>
+      Some of these fields are easy to explain, so we'll deal with
+      them now. 
+    </para>
+    <para>
+      The <literal>op_next</literal> field is a pointer to the next op
+      which needs to be executed. We'll see later, in <xref
+      linkend="internals.optree.tied">, how the "thread of execution" is derived
+      from the tree.
+    </para>
+    <para>
+      <literal>op_ppaddr</literal> is the address of the C function
+      which carries out this particular operation. It's stored here so
+      that our main execution code can simply dereference the function
+      pointer and jump to it, instead of having to perform a lookup.
+    </para>
+    <para>
+      Each unique operation has a different number; this can be found
+      in the <literal>enum</literal> in
+      <filename>opnames.h</filename>:
+
+      <programlisting>
+typedef enum opcode {
+    OP_NULL,        /* 0 */
+    OP_STUB,        /* 1 */
+    OP_SCALAR,      /* 2 */
+    OP_PUSHMARK,    /* 3 */
+    OP_WANTARRAY,   /* 4 */
+    OP_CONST,       /* 5 */
+    OP_GVSV,        /* 6 */
+    OP_GV,          /* 7 */
+    ...
+};
+</programlisting>
+
+      The number of the operation to perform is stored in the
+      <literal>op_type</literal> field. We'll examine some of the more
+      interesting operations in <xref linkend="internals.optree.diff">.
+    </para>
+    <para>
+      <literal>op_flags</literal> is a set of flags generic to all
+      ops; <literal>op_private</literal> stores flags which are
+      specific to the type of op. For instance, the
+      <literal>repeat</literal> op which implements the
+      <literal>x</literal> operator has the flag
+      <literal>OPpREPEAT_DOLIST</literal> set when it's repeating a
+      list rather than a string. This flag only makes sense for that
+      particular operation, so is stored in
+      <literal>op_private</literal>. Private flags have the
+      <literal>OPp</literal> prefix, and public flags begin with
+      <literal>OPf</literal>.
+    </para>
+    <para>
+      <literal>op_seq</literal> is a sequence number allocated by the
+      optimizer. It allows for, for instance, correct scoping of
+      lexical variables by storing the sequence numbers of the
+      beginning and end of scope operations inside the pad.
+    </para>
+    <para>
+      As for the remaining fields, we'll examine
+      <literal>op_sibling</literal> in <xref linkend="internals.optree.flavours">
+      and <literal>op_targ</literal> in <xref linkend="internals.optree.scratch">
+    </para>
+    <sect3 id="internals.optree.diff">
+      <title>The different operations</title>
+      <para>
+	Perl has currently 351 different operations, implementing all
+	the built-in functions and operators, as well as the more
+	structural operations required internally - entering and
+	leaving a scope, compiling regular expressions and so on.
+      </para>
+      <para>
+	The array <varname>PL_op_desc</varname> in
+	<filename>opcode.h</filename> describes each operation: it may
+	be easier to follow the data from which this table is
+	generated, at the end of <filename>opcode.pl</filename>. We'll
+	take a longer look at that file later on in this chapter.
+      </para>
+      <para>
+	Many of the operators are familiar from Perl-space, such as
+	<literal>concat</literal> and <literal>splice</literal>, but
+	some are used purely internally: for instance, one of the most
+	common, <literal>gvsv</literal> fetches a scalar variable;
+	<literal>enter</literal> and <literal>leave</literal> are
+	block control operators, and so on.
+      </para>
+    </sect3>
+    <sect3 id="internals.optree.flavours">
+      <title>Different "flavours" of op</title>
+      <para>
+	There are a number of different "flavours" of op structure,
+	related to the arguments of an operator and how it fits
+	together with other ops in the op tree. For instance,
+	<literal>scalar</literal> is a unary operator, a
+	<type>UNOP</type>. This extends the basic op structure above
+	with a link to the argument:
+
+	<programlisting>
+struct unop {
+    BASEOP
+    OP *    op_first;
+};
+</programlisting>
+
+	Binary operators, such as <literal>i_add</literal>, (integer
+	addition) have both a <literal>first</literal> and a
+	<literal>last</literal>:
+	<programlisting>
+struct binop {
+    BASEOP
+    OP *    op_first;
+    OP *    op_last;
+};
+</programlisting>
+      </para>
+      <para>
+	List operators are more interesting; they too have a
+	<literal>first</literal> and a <literal>last</literal>, but
+	they also have some ops in the middle, too. This is where
+	<literal>op_sibling</literal> above comes in; it connects ops
+	"sibling" ops on the same level in a list. For instance, look
+	at the following code and the graph of its op tree:
+	<programlisting>
+open FILE, "foo";
+print FILE "hi\n";
+close FILE;
+</programlisting>
+	<mediaobject>
+	  <imageobject><imagedata fileref="siblings.eps" format="eps"></imageobject>
+	  <imageobject><imagedata fileref="siblings.gif" format="gif"></imageobject>
+	</mediaobject>
+</para>
+      <para>
+	The dashed lines represent <literal>op_sibling</literal>
+	connections. The root operator of every program is the list
+	operator <literal>leave</literal>, and its children are the
+	statements in the program, separated by
+	<literal>nextstate</literal> (next statement)
+	operators. <literal>open</literal> is also a list operator, as
+	is <literal>print</literal>. The first child of
+	<literal>print</literal> is <literal>pushmark</literal>, which
+	puts a mark on the stack (see <xref linkend="internals.optree.argstack">)
+	so that Perl knows how many arguments on the stack belong to
+	<literal>print</literal>. The <literal>rv2gv</literal> turns a
+	reference to the filehandle <varname>FILE</varname> into a GV,
+	so that <literal>print</literal> can print to it, and the
+	final child is the constant <literal>"hi\n"</literal>.
+      </para>
+      <para>
+	Some operators hold information about the program; these are
+	COPs, or "code operators". Their definition is in
+	<filename>cop.h</filename>:
+<programlisting>
+struct cop {
+    BASEOP
+    char *  cop_label;  /* label for this construct */
+#ifdef USE_ITHREADS
+    char *  cop_stashpv;    /* package line was compiled in */
+    char *  cop_file;   /* file name the following line # is from */
+#else
+    HV *    cop_stash;  /* package line was compiled in */
+    GV *    cop_filegv; /* file the following line # is from */
+#endif
+    U32     cop_seq;    /* parse sequence number */
+    I32     cop_arybase;    /* array base this line was compiled with */
+    line_t      cop_line;       /* line # of this command */
+    SV *    cop_warnings;   /* lexical warnings bitmask */
+    SV *    cop_io;     /* lexical IO defaults */
+};
+	</programlisting>
+	COPs are inserted between every statement; they contain the
+	label (for <literal>goto</literal>, <literal>next</literal>
+	and so on) of the statement, the file name, package and line
+	number of the statement and lexical hints such as the current
+	value of <varname>$[</varname>, warnings and IO settings. Note
+	that this doesn't contain the current CV or the padlist -
+	these are kept on a special stack called the "context stack". 
+      </para>
+      <para>
+	The final type of op is the null op: any op with type zero
+	means that a previous op has been optimized away; we'll look
+	at how this is done later in this chapter, but for now, you
+	should skip over the null op when you see it in op trees.
+      </para>
+    </sect3>
+
+    <sect3 id="internals.optree.tied"> 
+      <title> Tying it all together </title>
+      <para>
+	We've so far seen a little of how the op tree is connected
+	together with <literal>op_first</literal>,
+	<literal>op_last</literal>, <literal>op_sibling</literal>, and
+	so on. Now we'll look at how the tree gets manufactured, as
+	how it gets executed.
+      </para>
+      <sect4>
+	<title>"Tree" order</title>
+	<para>
+	  After our investigation of the parser in the previous
+	  chapter, it should now be straightforward to see how the op
+	  tree is created. The parser calls routines in
+      <filename>op.c</filename> which create the op structures, 
+      passing ops further "down" the parse tree as arguments. This
+      threads together a tree as shown in the diagram above. For
+      comparison, here is the what the example in that chapter
+      (<literal>$a = $b + $c</literal>) really looks like as an op 
+      tree:
+	<mediaobject>
+	  <imageobject><imagedata fileref="abc.eps" format="eps"></imageobject>
+	  <imageobject><imagedata fileref="abc.gif" format="gif"></imageobject>
+	</mediaobject>
+      Again, you can see the places where an op was optimized away and
+      became a null op. This is not so different from the simplified
+      version we gave earlier.
+	</para>
+      </sect4>
+        <sect4>
+        <title> Execution Order </title>
+        <para> 
+	  The second thread through the op tree, indicated by the
+	  dotted line in our diagrams, is the execution order. This is
+	  the order in which Perl must actually perform the operations
+	  in order to run the program. The main loop of Perl is very,
+	  very simple, and you can see it in
+	  <filename>run.c</filename>:
+	  <programlisting>
+    while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX))) {
+        PERL_ASYNC_CHECK();
+    }
+</programlisting>
+	  That's it. That's all the Perl interpreter
+	  is. <varname>PL_op</varname> represents the op that's
+	  currently being executed. Perl calls the function pointer
+	  for that op and expects another op to be returned; this
+	  return value is then set to <varname>PL_op</varname>, which
+	  is executed in turn. Since everything apart from conditional
+	  operators (for obvious reasons) just return
+	  <varname>PL_op-&gt;op_next</varname>, the execution order
+	  through a program can be found by chasing the trail of
+	  <varname>op_next</varname> pointers from the start node to
+	  the root.
+	</para>
+	<para>
+	  We can trace the execution order in several ways: if Perl is
+	  built with debugging (<xref linkend="developing.minusd">), then we
+	  can say 
+	  <screen>
+<userinput>perl -Dt -e 'open ...'</userinput>
+</screen>
+	</para>
+	<para>
+	  Alternatively, and perhaps more simply, the compiler module
+	  <classname>B::Terse</classname> has an option to print the
+	  execution order, <literal>-exec</literal>.  For instance, in
+	  our "open-print-close" example above, the execution order
+	  is:
+
+	  <screen>
+<prompt>%</prompt> <userinput>perl -MO=Terse,-exec -e 'open FILE, "foo"; ...'</userinput>
+<computeroutput>
+OP (0x8111510) enter
+COP (0x81121c8) nextstate
+OP (0x8186f30) pushmark
+SVOP (0x8186fe0) gv  GV (0x8111bd8) *FILE
+SVOP (0x8186f10) const  PV (0x810dd98) "foo"
+LISTOP (0x810a170) open [1]
+COP (0x81114d0) nextstate
+OP (0x81114b0) pushmark
+SVOP (0x8118318) gv  GV (0x8111bd8) *FILE
+UNOP (0x8111468) rv2gv
+SVOP (0x8111448) const  PV (0x8111bfc) "hi\n"
+LISTOP (0x8111488) print
+COP (0x8111fe0) nextstate
+SVOP (0x8111fc0) gv  GV (0x8111bd8) *FILE
+UNOP (0x8111fa0) close
+LISTOP (0x8111420) leave [1]
+</computeroutput>
+</screen>
+	  This program, just like every other program, starts with the
+	  <literal>enter</literal> and <literal>nextstate</literal>
+	  ops to enter a scope and begin a new statement
+	  respectively. Then a mark is placed on the argument stack:
+	  marks represent the start of a set of arguments, and a list
+	  operator can retrieve all the arguments by pushing values
+	  off the stack until it finds a mark. Hence, we're notifying
+	  Perl of the beginning of the arguments to the
+	  <literal>open</literal> operator.
+	</para>
+	<para>
+	  The arguments in this case are merely the file handle to be
+	  opened and the file name; after operators put these two
+	  arguments on the stack, <literal>open</literal> can be
+	  called. This is the end of the first statement.
+	</para>
+	<para>
+	  Next, the arguments to <literal>print</literal> begin. This
+	  is slightly more tricky, because while
+	  <literal>open</literal> can only take a true filehandle,
+	  <literal>print</literal> may take any sort of
+	  reference. Hence, <literal>gv</literal> returns the GV and
+	  then this is turned into the appropriate filehandle type by
+	  the <literal>rv2gv</literal> operator. After the filehandle
+	  come the arguments to be printed; in this case, a constant
+	  (<literal>"hi\n"</literal>). Now all the arguments have been
+	  placed on the stack, <LITERAL>print</literal> can be
+	  called. This is the end of the second statement.
+	</para>
+	<para>
+	  Finally, a filehandle is put on the stack and closed. Note
+	  that at this point, the connections between the operators -
+	  unary, binary, etc. - are not important; all manipulation of
+	  values comes not by looking at the children of the operators
+	  but by looking at the stack. The types of op are important
+	  for the construction of the tree in "tree order", but the
+	  stack and the <literal>op_next</literal> pointers are the
+	  only important things for the execution of the tree in
+	  execution order.
+	</para>
+	<sidebar>
+	  <para>
+	    How is the execution order determined? The function
+	    <function>linklist</function> in <filename>op.c</filename>
+	    takes care of threading the <literal>op_next</literal>
+	    pointers in prefix order. It does so by recursively
+	    applying the following rule:
+	    <itemizedlist>
+	      <listitem>
+		<para>If there is a child for the current operator,
+		  visit the child first, then its siblings, then the
+		  current op.</para>
+	      </listitem>
+	    </itemizedlist>
+	    Hence, the starting operator is always the first child of
+	    the root operator, (always <literal>enter</literal>) the
+        second op to be executed is its sibling,
+        <literal>nextstate</literal>, and then the children of the next
+        op are visited. Similarly, the root itself
+        (<literal>leave</literal>) is always the last
+	    operator to be executed. Null operators are skipped over
+	    during optimization.
+	  </para>
+	</sidebar>
+        </sect4>
+    </sect3>
+  </sect2>
+  <sect2 id="internals.optree.ppcode">
+    <title> PP Code </title>
+    <para>
+      We know the order of execution of the operations, and what some
+      of them do. Now it's time to look at how they're actually
+      implemented - the source code inside the interpreter that
+      actually carries out <literal>print</literal>,
+      <literal>+</literal>, and other operations.
+    </para>
+    <para>
+      The functions which implement operations are known as "PP Code"
+      - "Push / Pop Code" - because most of their work involves
+      popping off elements from a stack, performing some operation on
+      it, and then pushing the result back. PP code can be found in
+      several files: <filename>pp_hot.c</filename> contains frequently
+      used code, put into a single object to encourage CPU caching;
+      <filename>pp_ctl.c</filename> contains operations related to
+      flow control; <filename>pp_sys.c</filename> contains the
+      system-specific operations such as file and network handling;
+      <literal>pack</literal> and <literal>unpack</literal> recently
+      moved to <filename>pp_pack.c</filename>, and
+      <filename>pp.c</filename> contains everything else.
+    </para>
+    <sect3 id="internals.optree.argstack">
+      <title>The argument stack</title>
+      <para>
+	We've already talked a little about the argument stack. The
+	Perl interpreter makes use of several stacks<!--, and we'll
+	investigate them all later in <xref linkend="rte.stacks"> -->, but
+	the argument stack is the main one. 
+      </para>
+      <para>
+	The best way to see how the argument stack is used is to watch
+	it in operation. With a debugging build of Perl, the
+	<literal>-Ds</literal> command line switch prints out the
+	contents of the stack in symbolic format between
+	operations. Here is a portion of the output of running
+	<userinput>$a=5; $b=10; print $a+$b;</userinput>:
+	<screen>
+(-e:1)  nextstate
+    =>
+(-e:1)  pushmark
+    =>  *
+(-e:1)  gvsv(main::a)
+    =>  *  IV(5)
+(-e:1)  gvsv(main::b)
+    =>  *  IV(5)  IV(10)
+(-e:1)  add
+    =>  *  IV(15)
+(-e:1)  print
+    =>  SV_YES
+	</screen>
+	At the beginning of a statement, the stack is typically
+	empty. First, Perl pushes a mark onto the stack to know when
+	to stop pushing off arguments for
+	<literal>print</literal>. Next, the values of
+	<varname>$a</varname> and <varname>$b</varname> are retrieved
+	and pushed onto the stack.
+      </para>
+      <para>
+	The addition operator is a binary operator, and hence,
+	logically, it takes two values off the stack, adds them
+	together and puts the result back onto the stack. Finally,
+	<literal>print</literal> takes all of the values off the stack
+	up to the previous bookmark and prints them out. Let's not
+	forget that <literal>print</literal> itself has a return
+	value, the true value <varname>SV_YES</varname> which it
+	pushes back onto the stack.
+      </para>
+    </sect3>
+    <sect3>
+      <title>Stack manipulation</title>
+      <para>
+	Let's now take a look at one of the PP functions, the integer
+	addition function <literal>pp_i_add</literal>. The code may
+	look formidable, but it's a good example of how the PP
+	functions manipulate values on the stack. 
+	<programlistingco>
+	  <areaspec>
+	    <!-- one of (AREASET AREA) -->
+	    <area coords="1" id="internals.optree.stack.1">
+	    <area coords="3" id="internals.optree.stack.2">
+	    <area coords="5" id="internals.optree.stack.3">
+	    <area coords="6" id="internals.optree.stack.4">
+	    <area coords="7" id="internals.optree.stack.5">
+	  </areaspec>
+	<programlisting>
+PP(pp_i_add)
+{
+    dSP; dATARGET; tryAMAGICbin(add,opASSIGN);
+    {
+      dPOPTOPiirl_ul;
+      SETi( left + right );
+      RETURN;
+    }
+}
+</programlisting>
+	  <calloutlist>
+	    <callout arearefs="internals.optree.stack.1">
+	      <para>
+		In case you haven't guessed,
+		<emphasis>everything</emphasis> in this function is a
+		macro. This first line declares the function
+		<function>pp_i_add</function> to be the appropriate
+		type for a PP function.
+	      </para>
+	    </callout>
+	    <callout arearefs="internals.optree.stack.2">
+	      <para>
+		Since following macros will need to manipulate the
+		stack, the first thing we need is a local copy of the
+		stack pointer, <varname>SP</varname>. And since this
+		is C, we need to declare this in advance:
+		<literal>dSP</literal> declares a stack pointer. Then
+		we need an SV to hold the return value, a
+		"target". This is declared with
+		<literal>dATARGET</literal>; see <xref
+		linkend="internals.optree.scratch"> for more on how targets
+		work. Finally, there is a chance that the addition
+		operator has been overloaded using the
+		<classname>overload</classname> pragma. The
+		<literal>tryAMAGICbin</literal> macro tests to see if
+		it is appropriate to perform "A" (overload) magic on
+		either of the scalars in a binary operation, and if
+		so, does the addition using a magic method call.
+	      </para>
+	    </callout>
+	    <callout arearefs="internals.optree.stack.3">
+	      <para>
+		We will deal with two values, <varname>left</varname>
+		and <varname>right</varname>. The
+		<literal>dPOPTOPiirl_ul</literal> macro pops two SVs
+		off the top of the stack, converts them to two
+		integers (hence <literal>ii</literal>) and stores them
+		into automatic variables <varname>right</varname> and
+		<varname>left</varname>. (hence <literal>rl</literal>)
+	      </para>
+		<sidebar>
+		  <para>
+		    The <literal>_ul</literal>? Look up the definition
+		    in <filename>pp.h</filename> and work it out...
+		  </para>
+		</sidebar>
+
+	    </callout>
+	    <callout arearefs="internals.optree.stack.4">
+	      <para>
+		We add the two values together, and set the integer
+		value of the target to the result, pushing the target
+		to the top of the stack.
+	      </para>
+	    </callout>
+	    <callout arearefs="internals.optree.stack.5">
+	      <para>
+		As mentioned above, operators are expected to return
+		the next op to be executed, and in most cases this is
+		simply the value of <varname>op_next</varname>. Hence
+		<literal>RETURN</literal> performs a normal return,
+		copying our local stack pointer <varname>SP</varname>
+		which we obtained above back into the global stack
+		pointer variable, and then returning the
+		<varname>op_next</varname>.
+	      </para>
+	    </callout>
+	  </calloutlist>
+	</programlistingco>
+      </para>
+      <para>
+	As you might have guessed, there are a number of macros for
+	controlling what happens to the stack; these can be found in
+	<filename>pp.h</filename>. The more common of these are:
+	<variablelist>
+	  <varlistentry>
+	    <term><literal>POPs</literal></term>
+	    <listitem>
+	      <para>
+		Pop an <type>SV</type> off the stack and return it. 
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>POPpx</literal></term>
+	    <listitem>
+	      <para>
+		Pop a string off the stack and return it. (Note:
+		requires a variable "<type>STRLEN</type>
+		<varname>n_a</varname>" to be in scope.)</para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>POPn</literal></term>
+	    <listitem>
+	      <para>
+		Pop an NV off the stack.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>POPi</literal></term>
+	    <listitem>
+	      <para>Pop an IV off the stack.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>TOPs</literal></term>
+	    <listitem>
+	      <para>
+		Return the top SV on the stack, but do not pop
+		it. (The macros <literal>TOPpx</literal>,
+		<literal>TOPn</literal>, etc. are analogous)
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>TOPm1s</literal></term>
+	    <listitem>
+	      <para>
+		Return the penultimate SV on the stack. (There is no
+		<literal>TOPm1px</literal>, etc.)
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>PUSHs</literal></term>
+	    <listitem>
+	      <para>
+		Push the scalar onto the stack; you must ensure that
+		the stack has enough space to accommodate it.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>PUSHn</literal></term>
+	    <listitem>
+	      <para>
+		Set the NV of the target to the given value, and push
+		it onto the stack. <literal>PUSHi</literal>, etc. are
+		analogous.
+	      </para>
+	      <para>
+		There is also an <literal>XPUSHs</literal>,
+		<literal>XPUSHn</literal>, etc. which extends the
+		stack if necessary.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>SETs</literal></term>
+	    <listitem>
+	      <para>
+		This sets the top element of the stack to the given
+		SV. <literal>SETn</literal>, etc. are analogous.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>dTOPss</literal>, <literal>dPOPss</literal></term>
+	    <listitem>
+	      <para>
+		These declare a variable called <varname>sv</varname>,
+		and either return the top entry from
+		the stack or pop an entry and set
+		<varname>sv</varname> to it.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term><literal>dTOPnv</literal>, <literal>dPOPnv</literal></term>
+	    <listitem>
+	      <para>
+		These are similar, but declare a variable called
+		<varname>value</varname> of the appropriate
+		type. <literal>dTOPiv</literal> and so on are analogous.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	</variablelist>
+      </para>
+      <para>
+	In some cases, the PP code is purely concerned with
+	rearranging the stack, and the PP function will call out to
+	another function in <filename>doop.c</filename> to actually
+	perform the relevant operation.
+      </para>
+    </sect3>
+  </sect2>
+  <sect2>
+    <title> The opcode table and <filename>opcodes.pl</filename></title>
+    <para>
+      The header files for the opcode tables are generated from a Perl
+      program called <filename>opcode.pl</filename>. Here is a sample
+      entry for an op:
+      <programlisting>
+index             index                      ck_index isT@     S S S?  
+</programlisting>
+      The entry is in five columns.
+    </para>
+
+    <para>
+      The first column is the internal name of the operator. When
+      <filename>opcode.pl</filename> is run, it will create an enum
+      including the symbol <literal>OP_INDEX</literal>.
+    </para>
+
+    <para>
+      The second column is the English description of the operator
+      which will be printed during error messages.
+    </para>
+
+    <para>
+      The third column is the name of the "check" function which will
+      be used to optimize this tree; see <xref linkend="internals.optree.optimize">.
+    </para>
+
+    <para>
+      Then come additional flags plus a character which specifies the
+      "flavour" of the op: in this case, <literal>index</literal> is a
+      list op, since it can take more than two parameters, so it has
+      the symbol <literal>@</literal>.
+    </para>
+
+    <para>
+      Finally, the "prototype" for the function is given: <literal>S S
+      S?</literal> translates to the Perl prototype
+      <literal>$$;$</literal>, which is indeed the prototype for
+      <literal>CORE::index</literal>.
+    </para>
+    <para>
+      While most people will never need to edit the op table, it is as
+      well to understand how Perl "knows" what the ops look
+      like. There is a full description of the format of the table,
+      including details of the meanings of the flags, in
+      <filename>opcodes.pl</filename>.
+    </para>
+  </sect2>
+  <sect2 id="internals.optree.scratch">
+    <title> Scatchpads and Targets </title>
+    <para>
+      PP code is the guts of Perl execution, and hence is highly
+      optimized for speed. One thing that you don't want to do in
+      time-critical areas is create and destroy SVs, because
+      allocating and freeing memory is a slow process. So Perl
+      allocates for each op a <firstterm>target</firstterm> SV which
+      is created at compile time. We've seen above that PP code gets
+      the target and uses the <literal>PUSH</literal> macros to push
+      the target onto the stack. 
+    </para>
+    <para>
+      Targets live on the scratchpad, just like lexical
+      variables. <literal>op_targ</literal> for an op is an offset in
+      the current pad; it is the element number in the pad's
+      array which stores the SV that should be used as the
+      target. Perl arranges that ops can reuse the same target if they
+      are not going to collide on the stack; similarly, it also
+      directly uses lexical variables on the pad as targets if
+      appropriate instead of going through a <literal>padsv</literal>
+      operation to extract them. (This is a standard compiler
+      technique called "binding".)
+    </para>
+    <para>
+      You can tell if an SV is a target by its flags: targets (also
+      known as temporaries) have the <literal>TEMP</literal> flag set,
+      and SVs bound to lexical variables on the pad have the
+      <literal>PADMY</literal> flag set.
+    </para>
+  </sect2>
+  <sect2 id="internals.optree.optimize">
+    <title> The Optimizer </title>
+    <para>
+      Between compiling the op tree and executing it, Perl goes
+      through three stages of optimization.
+    </para>
+    <para>
+      The first stage actually happens as the tree is being
+      constructed. Once Perl creates an op, it passes it off to a
+      check routine. We saw above how the check routines are assigned
+      to operators in the op table; an <literal>index</literal> op
+      will be passed to <literal>ck_index</literal>. This routine may
+      manipulate the op in any way it pleases, including freeing it,
+      replacing it with a different op, or adding new ops above or
+      below it. They are sometimes called in a chain: for instance,
+      the check routine for <literal>index</literal> simply tests to
+      see if the string being sought is a constant, and if so,
+      performs a Fast Boyer-Moore string compilation to speed up the
+      search at runtime; then it calls the general function-checking
+      routine <function>ck_fun</function>. 
+    </para>
+    <para>
+      Secondly, the constant folding routine
+      <function>fold_constants</function> is called if
+      appropriate. This tests to see whether all of the descendents of
+      the op are constants, and if they are, runs the operator as if
+      it was a little program, collects the result and replaces the op
+      with a constant op reflecting that result. You can tell if
+      constants have been folded by using the "deparse" compiler
+      backend (see <xref linkend="compiler.deparse">):
+      <screen>
+<prompt> %</prompt> <userinput>perl -MO=Deparse -e 'print (3+5+8+$foo)'</userinput>
+<computeroutput>
+print 16 + $foo;
+	</computeroutput>
+</screen>
+      Here, the <literal>3+5</literal> has been constant-folded into
+      <literal>8</literal>, and then <literal>8+8</literal> is
+      constant-folded to 16.
+    </para>
+    <para>
+      Finally, the peephole optimizer <function>peep</function> is
+      called. This examines each op in the tree in execution order,
+      and attempts to determine "local" optimizations by "thinking
+      ahead" one or two ops and seeing if multiple operations can be
+      combined into one. It also checks for lexical issues such as the
+      effect of <literal>use strict</literal> on bareword constants.
+    </para>
+  </sect2>
+  <sect2>
+    <title>Summary</title>
+    <para>
+      Perl's fundamental operations are represented by a series of
+      structures, analogous to the structures which make up Perl's
+      internal values. These ops are threaded together in two ways -
+      firstly, into an op tree during the parsing process, where each
+      op dominates its arguments, and secondly, by a thread of
+      execution which establishes the order in which Perl has to run
+      the ops.
+    </para>
+    <para>
+      To run the ops, Perl uses the code in
+      <filename>pp*.c</filename>, which is particularly
+      macro-heavy. Most of the macros are concerned with manipulating
+      the argument stack, which is the means by which Perl passes data
+      between operations.
+    </para>
+    <para>
+      Once the op tree is constructed, there are a number of means by
+      which it is optimized - check routines and constant folding
+      which takes place after each op is created, and a peephole
+      optimizer which performs a "dry run" over the execution order.
+    </para>
+  </sect2>
+
+    
+  </sect1>
+  
+  <sect1 id="internals.execution">
+    <title> Execution </title>
+    <para>
+      Once we have constructed an op code tree from a program,
+      executing the code is a simple matter of following the chain of
+      <varname>op_next</varname> pointers, and executing the
+      operations specified by each op. The code which does this is in
+      <filename>run.c</filename>:
+
+<programlisting>
+    while ((PL_op = CALL_FPTR(PL_op->op_ppaddr)(aTHX))) {
+        PERL_ASYNC_CHECK();
+    }
+</programlisting>
+
+      That's to say, we start with the first op,
+      <varname>PL_op</varname>, and we call the function in its
+      <varname>op_ppaddr</varname> slot. This will return another op,
+      which we assign to <varname>PL_op</varname>, or a null pointer
+      meaning the end of the program. In between executing ops, we
+      perform the "asynchronous check", which despatches signal
+      handlers and other events which may occur between operations.
+    </para>
+    <para>
+      As we know from looking at XS programming, Perl keeps values
+      between operations on the argument stack. The job of ops is to
+      manipulate the arguments on the stack. For instance, the
+      <literal>add</literal> operator is implemented like this: (in
+      <filename>pp_hot.c</filename>)
+      <programlisting>
+PP(pp_and)
+{
+    dSP;
+    if (!SvTRUE(TOPs))
+        RETURN;
+    else {
+        --SP;
+        RETURNOP(cLOGOP->op_other);
+    }
+}
+</programlisting>
+      If the SV on the top of the argument stack does not have a true
+      value, then the <literal>and</literal> cannot be true, so we
+      simply return the next op in the sequence. We don't even need to
+      look at the right hand side of the <literal>and</literal>. If it
+      is true, however, we can discard it by popping the stack and we
+      need to execute the right hand side (stored in
+      <varname>op_other</varname>) to determine whether that is true
+      as well. Hence, we return the chain of operations starting at
+      <varname>op_other</varname>; the <varname>op_next</varname>
+      pointers of these operations will be arranged so as to meet up
+      with the operation after <varname>and</varname>.
+    </para>
+  </sect1>
+
+
+<sect1 id="internals.compiler">
+  <title> The Perl Compiler</title>
+  <para>
+    We'll finish off our tour of the perl internals by discussing the
+    oft misunderstood Perl compiler.
+  </para>
+  <sect2>
+    <title>What is the Perl Compiler?</title>
+    <para>
+      In 1996, someone announced a challenge - the first person to
+      write a compiler suite for Perl would win a laptop. Malcolm
+      Beattie stepped up to the challenge, and won the laptop with his
+      <classname>B</classname> suite of modules. Many of these modules
+      have now been brought into the Perl core as standard modules.
+    </para>
+    <para>
+      The Perl compiler is not just for compiling Perl code to a
+      standalone executable - in fact, some would argue that it's not
+      <emphasis>at all</emphasis> for compiling Perl into a standalone
+      executable. We've already seen the use of the
+      <classname>B::Terse</classname> and
+      <classname>B::Tree</classname> modules to help us visualise the
+      Perl op tree, and this should give us a hint as to what the Perl
+      compiler is actually all about.
+    </para>
+    <para>
+      The compiler comes in three parts: a frontend module,
+      <classname>O</classname>, which does little other than turn on
+      Perl's <literal>-c</literal> (compile only, do not run) flag,
+      and loads up a backend module, such as
+      <classname>B::Terse</classname> which performs a specific
+      compiler task, and the <classname>B</classname> module which
+      acts as a low-level driver.
+    </para>
+    <para>
+      The <classname>B</classname>, at the heart of the compiler, is a
+      stunningly simple XS module which makes Perl's internal
+      object-like structures - SVs, ops, and so on - into real
+      Perl-space objects. This provides us with a degree of
+      introspection: we can, for instance, write a backend module
+      which traverses the op tree of a compiled program and dump out
+      its state to a file. (This is exactly what the
+      <classname>B::Bytecode</classname> module does.)
+    </para>
+    <para>
+      It's important to know what the Perl compiler is not. It's not
+      something which will magically make your code go faster, or take
+      up less space, or be more reliable. The backends which generate
+      standalone code generally do exactly the opposite. All the
+      compiler is, essentially, is a way of getting access to the op
+      tree and doing something potentially interesting with it. Let's
+      now take a look at some of the interesting things that can be
+      done with it.
+    </para>
+  </sect2>
+  <sect2>
+    <title><classname>B::</classname> Modules</title>
+    <para>
+      There are twelve backend modules to the compiler in the Perl
+      core, and many more besides on CPAN. Here we'll briefly examine
+      those which are particularly helpful to internals hackers or
+      particularly interesting.
+    </para>
+    <sect3>
+      <title><classname>B::Concise</classname></title>
+      <para>
+	<classname>B::Concise</classname> was written quite recently
+	by Stephen McCamant to provide a generic way of getting
+	concise information about the op tree. It is highly
+	customizable, and can be used to emulate
+	<classname>B::Terse</classname> and
+	<classname>B::Debug</classname>. (see below)
+      </para>
+      <para>
+	Here's the basic output from <classname>B::Concise</classname>:
+	  <screen>
+	    <prompt>%</prompt> <userinput>perl -MO=Concise -e 'print $a+$b'</userinput>
+1r <@> leave[t1] vKP/REFC ->(end)
+1k    <0> enter ->1l
+1l    <;> nextstate(main 7 -e:1) v ->1m
+1q    <@> print vK ->1r
+1m       <0> pushmark s ->1n
+1p       <2> add[t1] sK/2 ->1q
+-           <1> ex-rv2sv sK/1 ->1o
+1n             <$> gvsv(*a) s ->1o
+-           <1> ex-rv2sv sK/1 ->1p
+1o             <$> gvsv(*b) s ->1p
+</screen>
+      </para>
+      <para>
+	Each line consists of five main parts:
+	<itemizedlist>
+	  <listitem>
+	    <para>
+	      a label for this operator (in this case, <literal>1r</literal>)
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <para>
+	      a type signifier (<literal>@</literal> is a list operator - think
+	      arrays)
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <para>
+	      the name of the op and its target, if any, plus any other information
+	      about it
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <para>
+	      the flags for this operator. Here, <literal>v</literal>
+	      signifies void context and <literal>K</literal> shows
+	      that this operator has children. The private flags are
+	      shown after the slash, and are written out as a longer
+	      abbreviation than just one character:
+	      <literal>REFC</literal> shows that this op is
+	      refcounted.
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <para>
+	      finally, the label for the next operator in the tree, if there
+	      is one.
+	    </para>
+	  </listitem>
+	</itemizedlist>		
+      </para>
+      <para>
+	Note also that, for instance, ops which have been optimized
+	away to a null are left as "ex-...". The exact meanings of the
+	flags and the op classes are given in the
+	<classname>B::Concise</classname> documentation:
+	<programlisting>
+=head2 OP flags abbreviations
+
+    v      OPf_WANT_VOID    Want nothing (void context)
+    s      OPf_WANT_SCALAR  Want single value (scalar context)
+    l      OPf_WANT_LIST    Want list of any length (list context)
+    K      OPf_KIDS         There is a firstborn child.
+    P      OPf_PARENS       This operator was parenthesized.
+                             (Or block needs explicit scope entry.)
+    R      OPf_REF          Certified reference.
+                             (Return container, not containee).
+    M      OPf_MOD          Will modify (lvalue).
+    S      OPf_STACKED      Some arg is arriving on the stack.
+    *      OPf_SPECIAL      Do something weird for this op (see op.h)
+
+=head2 OP class abbreviations
+
+    0      OP (aka BASEOP)  An OP with no children
+    1      UNOP             An OP with one child
+    2      BINOP            An OP with two children
+    |      LOGOP            A control branch OP
+    @      LISTOP           An OP that could have lots of children
+    /      PMOP             An OP with a regular expression
+    $      SVOP             An OP with an SV
+    "      PVOP             An OP with a string
+    {      LOOP             An OP that holds pointers for a loop
+    ;      COP              An OP that marks the start of a statement
+</programlisting>
+      </para>
+      <para>
+	As with many of the debugging <classname>B::</classname>
+	modules, you can use the <literal>-exec</literal> flag to
+	walk the op tree in execution order, following the chain of
+	<varname>op_next</varname>'s from the start of the tree:
+	  <screen>
+	    <prompt>%</prompt> <userinput>perl -MO=Concise,-exec -e 'print $a+$b'</userinput>
+1k <0> enter 
+1l <;> nextstate(main 7 -e:1) v
+1m <0> pushmark s
+1n <$> gvsv(*a) s
+1o <$> gvsv(*b) s
+1p <2> add[t1] sK/2
+1q <@> print vK
+1r <@> leave[t1] vKP/REFC
+-e syntax OK
+	</screen>
+      </para>
+      <para>
+	Amongst other options, (again, see the documentation)
+	<classname>B::Concise</classname> supports a
+	<literal>-tree</literal> option for tree-like ASCII art
+	graphs, and the curious but fun <literal>-linenoise</literal> option.
+      </para>
+    </sect3>
+    <sect3>
+      <title><classname>B::Debug</classname></title>
+      <para>
+	<classname>B::Debug</classname> dumps out
+	<emphasis>all</emphasis> of the information in the op tree;
+	for anything bigger than a trivial program, this is just way
+	too much information. Hence, to sensibly make use of it, it's
+	a good idea to go through with <classname>B::Terse</classname>
+	or <classname>B::Concise</classname> first, and find which ops
+	you're interested in, and then grep for them. 
+      </para>
+      <para>
+	Some output from <classname>B::Debug</classname> looks like
+	this:
+
+	<programlisting>
+LISTOP (0x81121a8)
+        op_next         0x0
+        op_sibling      0x0
+        op_ppaddr       PL_ppaddr[OP_LEAVE]
+        op_targ         1
+        op_type         178
+        op_seq          6433
+        op_flags        13
+        op_private      64
+        op_first        0x81121d0
+        op_last         0x8190498
+        op_children     3
+OP (0x81121d0)
+        op_next         0x81904c0
+        op_sibling      0x81904c0
+        op_ppaddr       PL_ppaddr[OP_ENTER]
+        op_targ         0
+        op_type         177
+        op_seq          6426
+        op_flags        0
+        op_private      0
+</programlisting>
+
+	As you should know from the ops chapter, this is all the
+	information contained in the op structure: the type of op and
+	its address, the ops related to it, the C function pointer
+	implementing the PP function, the target on the scratchpad
+	this op uses, its type, sequence number, and public and
+	private flags. It also does similar dumps for SVs. You may
+	find the <classname>B::Flags</classname> module useful for
+	"Englishifying" the flags.
+      </para>
+    </sect3>
+    <sect3 id="compiler.deparse">
+      <title><classname>B::Deparse</classname></title>
+      <para>
+	<classname>B::Deparse</classname> takes a Perl program and
+	turns it into a Perl program. This doesn't sound very
+	impressive, but it actually does so by decompiling the op tree
+	back into Perl. While this has interesting uses for things
+	like serializing subroutines, it's interesting for internals
+	hackers because it shows us how Perl understands certain
+	constructs. For instance, we can see that logical operators
+	and binary "if" are equivalent:
+
+	<screen>
+<prompt>%</prompt> <userinput> perl -MO=Deparse -e '$a and do {$b}'</userinput>
+<computeroutput>
+if ($a) {
+    do {
+        $b;
+    };
+}
+-e syntax OK
+</computeroutput>
+</screen>
+
+	We can also see, for instance, how the magic that is added by
+	command line switches goes into the op tree:
+
+	<screen>
+<prompt>%</prompt> <userinput>perl -MO=Deparse -ane 'print'</userinput>
+<computeroutput>
+LINE: while (defined($_ = &lt;ARGV&gt;)) {
+    @F = split(" ", $_, 0);
+    print $_;
+}
+-e syntax OK
+</computeroutput>
+</screen>
+      </para>
+    </sect3>
+  </sect2>
+  <sect2>
+    <title>What <classname>B</classname> and <classname>O</classname>
+    Provide</title>
+    <para>
+      To see how we can built compilers and introspective modules with
+      <classname>B</classname>, we need to see what
+      <classname>B</classname> and the compiler front-end
+      <classname>O</classname> give us. We'll start with
+      <classname>O</classname>, since it's simpler.
+    </para>
+    <sect3>
+      <title><classname>O</classname></title>
+      <para>
+	The guts of the <classname>O</classname> module are very small
+	- only 48 lines of code - because all it intends to do is set
+	up the environment ready for a back-end module. The back-ends
+	are expected to provide a subroutine called
+	<function>compile</function> which processes the options that
+	are passed to it and then returns a subroutine reference which
+	does the actual compilation. <classname>O</classname> then
+	calls this subroutine reference in a CHECK block.
+      </para>
+      <para>
+	CHECK blocks were specifically designed for the compiler -
+	they're called after Perl has finished constructing the op
+	tree and before it starts running the
+	code. <classname>O</classname> calls the
+	<classname>B</classname> subroutine
+	<function>minus_c</function> which, as its name implies, is
+	equivalent to the command-line <literal>-c</literal> flag to
+	perl: compile but do not execute the code. It then ensures
+	that any BEGIN blocks are accessible to the back-end modules,
+	and then calls <function>compile</function> from the back-end
+	processor with any options from the command line.
+      </para>
+    </sect3>
+    <sect3>
+      <title><classname>B</classname></title>
+      <para>
+	As we have mentioned, the B module allows Perl-level access to
+	ops and internal variables. There are two key ways to get this
+	access: from the op tree, or from a user-specified Perl "thing".
+      </para>
+      <para>
+	To get at the op tree, <classname>B</classname> provides the
+	<function>main_root</function> and
+	<function>main_start</function> functions. These return
+	<classname>B::OP</classname>-derived objects representing the
+	root of the op tree and the start of the tree in execution order
+	respectively:
+	<screen>
+<prompt>%</prompt> <userinput> perl -MB -le 'print B::main_root; print B::main_start'</userinput>
+<computeroutput>
+B::LISTOP=SCALAR(0x8104180)
+B::OP=SCALAR(0x8104180)
+</computeroutput>
+	</screen>
+      </para>
+      <para>
+	For everything else, you can use the
+	<function>svref_2object</function> function which turns some
+	kind of reference into the appropriate
+	<classname>B::SV</classname>-derived object:
+	<screen>
+<prompt>%</prompt> <userinput> perl -MB -l
+	  $a = 5; print B::svref_2object(\$a); 
+	  @a=(1,2,3); print B::svref_2object(\@a);
+	  </userinput>
+	  <computeroutput>
+B::IV=SCALAR(0x811f9b8)
+B::AV=SCALAR(0x811f9b8)
+	  </computeroutput>
+	</screen>
+	(Yes, it's normal that the objects will have the same addresses.)
+      </para>
+      <para>
+	In this tutorial we'll concentrate on the op-derived classes,
+	because they're the most useful feature of
+	<classname>B</classname> for compiler construction; the SV
+	classes are a lot simpler and quite analogous.
+      </para>
+    </sect3>
+  </sect2>
+  <sect2>
+    <title>Using <classname>B</classname> for Simple Things</title>
+    <para></para>
+    <para>
+      OK, so now we have the objects - what can we do with them?
+      <classname>B</classname> provides accessor methods similar to
+      the fields of the structures in <filename>op.h</filename> and
+      <filename>sv.h</filename>. For instance, we can find out the
+      type of the root op like this:
+<screen>
+<userinput>$op=B::main_root; print $op->type;</userinput>
+<computeroutput>178</computeroutput>
+</screen>
+      Oops: <varname>op_type</varname> is actually an enum, so we
+      can't really get much from looking at that directly; however,
+      <classname>B</classname> also gives us the
+      <function>name</function> method, which is a little friendlier:
+<screen>
+<userinput>$op=B::main_root; print $op->name;</userinput>
+<computeroutput>leave</computeroutput>
+</screen>
+      We can also use <function>flags</function>,
+      <function>private</function>, <function>targ</function>, and so
+      on - in fact, everything we saw prefixed by
+      <function>op_</function> in the <classname>B::Debug</classname>
+      example above. 
+    </para>
+    <para>
+      What about traversing the op tree, then? You should be happy to
+      learn that <function>first</function>,
+      <function>sibling</function>, <function>next</function> and
+      friends return the <classname>B::OP</classname> object for the
+      related op. That's to say, you can follow the op tree in
+      execution order by doing something like this:
+<programlisting>
+#!/usr/bin/perl -cl
+use B; 
+CHECK { 
+	  $op=B::main_start; 
+	  print $op->name while $op=$op->next;
+} 
+
+print $a+$b;
+...
+      </programlisting>
+    </para>
+    <para>
+      Except that's not quite there; when you get to the last op in
+      the sequence, the "enter" at the root of the tree,
+      <function>op_next</function> will be a null
+      pointer. <classname>B</classname> represents a null pointer by
+      the <classname>B::NULL</classname> object, which has no
+      methods. This has the handy property that if
+      <varname>$op</varname> is a <classname>B::NULL</classname>, then
+      <varname>$$op</varname> will be zero. So we can print the name
+      of each op in execution order by saying:
+      <programlisting>
+	  $op=B::main_start; 
+	  print $op->name while $op=$op->next and $$op;
+</programlisting>
+    </para>
+    <para>
+      Walking the tree in normal order is a bit more tricky, since we
+      have to make the right moves appropriate for each type of op: we
+      need to look at both <varname>first</varname> and
+      <varname>last</varname> links from binary ops, for instance, but
+      only the <varname>first</varname> from a unary op. Thankfully,
+      <classname>B</classname> provides a function which does this all
+      for us: <function>walkoptree_slow</function>. This arranges to
+      call a user-specified method on each op in turn. Of course, to
+      make it useful, we have to define the method...
+    <programlisting>
+#!/usr/bin/perl -cl
+use B; 
+CHECK { 
+      B::walkoptree_slow(B::main_root, "print_it", 0); 
+      sub B::OP::print_it { my $self = shift; print $self->name }
+} 
+
+print $a+$b;
+...
+</programlisting>
+      Since all ops inherit from <classname>B::OP</classname>, this
+      duly produces:
+<screen>
+<computeroutput>
+leave
+enter
+nextstate
+print
+pushmark
+add
+null
+gvsv
+null
+gvsv
+     </computeroutput>
+      </screen>
+      We can also use the knowledge that
+      <function>walkoptree_slow</function> passes the recursion level
+      as a parameter to the callback method, and prettify the tree a
+      little, like this:
+<programlisting>
+      sub B::OP::print_it {
+          my ($self,$level)=@_;
+          print "    "x$level, $self->name
+      }
+      </programlisting>
+<screen>
+<computeroutput>
+leave
+    enter
+    nextstate
+    print
+        pushmark
+        add
+            null
+                gvsv
+            null
+                gvsv
+      </computeroutput>
+    </screen>
+      See how we're starting to approximate
+      <classname>B::Terse</classname>? Actually,
+      <classname>B::Terse</classname> uses the
+      <function>B::peekop</function> function, a little like this:
+<programlisting>
+      sub B::OP::print_it {
+          my ($self,$level)=@_;
+          print "    "x$level, B::peekop($self);
+      }
+      </programlisting>
+<screen>
+<computeroutput>
+LISTOP (0x81142c8) leave
+    OP (0x81142f0) enter
+    COP (0x8114288) nextstate
+    LISTOP (0x8114240) print
+        OP (0x8114268) pushmark
+        BINOP (0x811d920) add
+            UNOP (0x8115840) null
+                SVOP (0x8143158) gvsv
+            UNOP (0x811d900) null
+                SVOP (0x8115860) gvsv
+      </computeroutput>
+      </screen>
+      All that's missing is that <classname>B::Terse</classname>
+      provides slightly more information based on each different type
+      of op, and that can be easily done by putting methods in the
+      individual op classes: <classname>B::LISTOP</classname>,
+      <classname>B::UNOP</classname> and so on.
+    </para>
+    <para>
+      Let's
+      finish off our little compiler - let's call it
+      <classname>B::Simple</classname> - by turning it into a module
+      that can be used from the <classname>O</classname>
+      front-end. This is easy enough to do in our case, once we
+      remember that <function>compile</function> has to return a
+      callback subroutine reference:
+      <programlisting>
+package B::Simple;
+use B qw(main_root peekop walkoptree_slow);
+
+sub B::OP::print_it {
+    my ($self,$level)=@_;
+    print "    "x$level, peekop($self);
+}
+
+sub compile {
+    return sub { walkoptree_slow(main_root, "print_it", 0); }
+}
+
+1;
+</programlisting>
+      If we save the above code as <filename>B/Simple.pm</filename>,
+      we can run it on our own programs with <userinput>perl
+	-MO=Simple ...</userinput>. We have a backend compiler module!
+    </para>
+  </sect2>
+</sect1>
+  <sect1>
+    <title>Summary</title>
+    <para>
+      In our whirlwind tour of the Perl internals, we've looked at
+      where to find things in the Perl source tree, the outline of the
+      process that Perl goes through to execute a program, how the
+      parser and tokeniser work, as well as the way that Perl's
+      fundamental operations are coded. Finally, we've examined the
+      Perl compiler; how to use it to debug Perl programs, and how to
+      write compiler modules.
+    </para>
+    <para>
+      Hopefully, we've given you enough information about how the Perl
+      internals work so that if you want to investigate Perl's
+      behaviour, you'll now have some idea where to start digging into
+      the source. If you want a more gentle introduction to the Perl
+      internals than this chapter, you can take a look at the
+      <filename>perlhack</filename> documentation which comes with
+      Perl, or the extended <ulink
+      url="http://www.netthink.co.uk/downloads/internals/book.html">Perl
+      Internals tutorial</ulink>. If you want to dive into the deep
+      end, <filename>perlguts</filename> in the Perl documentation
+      tells you far more than you needed to know about Perl's internals.
+    </para>
+  </sect1>
+</chapter>
+

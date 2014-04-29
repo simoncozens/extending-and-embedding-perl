@@ -1,0 +1,42 @@
+<sect3 id="api.av.undef">
+    <title><function>av_undef</function></title>
+    <funcsynopsis>
+      <funcprototype>
+        <funcdef> <function>av_undef</function></funcdef>
+        <paramdef>AV* <parameter>av</parameter></paramdef>
+      </funcprototype>
+    </funcsynopsis>
+<para>
+<!-- What does it do? -->
+</para>
+<example>
+<title> Removing and freeing an old array </title>
+<para>
+
+<!-- Introduction to example -->
+	  </para>
+        <programlistingco>
+          <areaspec>
+        <area coords="1" id="api.av.undef.1">
+        <area coords="2" id="api.av.undef.2">
+        <area coords="3" id="api.av.undef.3">
+          </areaspec>
+          <programlisting>
+
+</programlisting>
+          <calloutlist>
+        <callout arearefs="api.av.undef.1">
+          <para>
+        </para>
+        </callout>
+
+        <callout arearefs="api.av.undef.2">
+          <para>
+        </para>
+        </callout>
+          </calloutlist>
+        </programlistingco>
+      </example>
+
+    <para>See also: <xref linkend="api.???">,</para>
+      </sect3>

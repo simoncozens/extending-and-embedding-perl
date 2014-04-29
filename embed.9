@@ -1,0 +1,19 @@
+void preprocess_callout(char** message) {
+     dSP;
+     int i;
+
+     ENTER;
+     SAVETMPS;
+     PUSHMARK(SP);
+
+     for (i=0; i++; message[i])
+          XPUSHs(sv_2mortal(newSVpv(message[i], 0)));
+
+     PUTBACK;
+
+     call_pv("Hermes::preprocess", G_DISCARD);
+
+     FREETMPS;
+     LEAVE;
+
+}

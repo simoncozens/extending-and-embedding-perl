@@ -1,0 +1,105 @@
+<sect3 id="api.get.sv">
+	<title><function>get_sv</function></title>
+	<funcsynopsis>
+	  <funcprototype>
+	    <funcdef>SV* <function>get_sv</function></funcdef>
+	    <paramdef>char* <parameter>name</parameter></paramdef>
+	    <paramdef>bool <parameter>create</parameter></paramdef>
+	  </funcprototype>
+	</funcsynopsis>
+	<para>
+	  <!-- What does it do? --> This function returns you the
+	  <type>SV</type> which represents the Perl-side variable
+	  <replaceable>name</replaceable>; if this SV doesn't
+	  currently exist in the Perl symbol table, it will be created
+	  if <replaceable>create</replaceable> is specified -
+	  otherwise you get a null pointer back. This function is the
+	  usual way to communicate with options provided by the user
+	  as global or package Perl variables. This should be called
+	  as merely <function>get_sv</function>, but you may also see
+	  it as <function>perl_get_sv</function> in older code.
+	  <example>
+	    <title> Debugging XS Modules </title>
+	    <para>
+	      <!-- Introduction to example -->
+	      The most common use of <function>get_sv</function> is to
+	      read parameters set by the user in Perl space. For
+	      instance, <varname>$YourModule::DEBUG</varname> could be
+	      set to true to turn on debugging information. This is
+	      exactly what the <classname>Storable</classname> module
+	      does. Let's have a look at how it sets up its debugging mode:
+	    </para>
+	    <programlistingco>
+	      <areaspec>
+		<area coords="1" id="api.get.sv.1">
+		<area coords="3" id="api.get.sv.2">
+		<area coords="4" id="api.get.sv.3">
+		<area coords="5" id="api.get.sv.4">
+	      </areaspec>
+	      <programlisting>
+#ifdef DEBUGME
+#define TRACEME(x)  do {                                    \
+    if (SvTRUE(perl_get_sv("Storable::DEBUGME", TRUE))) \
+        { PerlIO_stdoutf x; PerlIO_stdoutf("\n"); }         \
+} while (0)
+#else
+#define TRACEME(x)
+#endif
+
+...
+
+TRACEME(("small integer stored as %d", siv));
+	      </programlisting>
+	      <calloutlist>
+		<callout arearefs="api.get.sv.1">
+		  <para>
+		    Firstly, the module has to be complied with
+		    <userinput>-DDEBUGME</userinput> before any
+		    debugging can take place: if it is not,
+		    <function>TRACEME()</function> simply expands to
+		    nothing - that is, it is optimized away.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.get.sv.2">
+		  <para>
+		    We now get a "handle" on the Perl-side variable
+		    <varname>$Storable::DEBUGME</varname>, creating it
+		    if it doesn't already exist, and then calls
+		    <function>SvTRUE</function> (See <xref linkend="api.svtrue">)
+		    to test whether or not it is set to a true value.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.get.sv.3">
+		  <para>
+		    If it is, the debugging message is formatted and
+		    printed to standard output using
+		    <function>PerlIO_stdoutf</function> (See <xref
+		    linkend="api.perlio.stdoutf">), followed by a new line.
+		  </para>
+		</callout>
+
+		<callout arearefs="api.get.sv.4">
+		  <para>
+		    The <userinput>do { ... } while (0)</userinput> is
+		    a preprocessor trick to make sure the code
+		    consists of one statement, so that it can be used
+		    like this:
+
+		    <programlisting>
+    if (broken)
+        TRACEME(("Something is wrong!"));
+</programlisting>
+		    Without the do-while trick, this would require
+		    braces as it would be more than one statement.
+		  </para>
+		</callout>
+
+	      </calloutlist>
+	    </programlistingco>
+	  </example>
+	</para>
+	<para>See also: <xref linkend="api.get.av">, <xref
+	linkend="api.get.hv">.</para>
+      </sect3>
